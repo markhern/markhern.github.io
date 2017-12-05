@@ -1,3 +1,3 @@
 # markhern.github.io
-testing the github pages idea
+testing the github pages idea & I think its great!
 This is my readme.md

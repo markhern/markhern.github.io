@@ -1,0 +1,1193 @@
+-------------------------------------------------------- DOCS FROM CLOJURE HOME SITE ----------------------------
+Vars and the Global Environment
+
+Clojure is a practical language that recognizes the occasional need to maintain a persistent reference to a changing value and provides 4 distinct mechanisms for doing so in a controlled manner - Vars, Refs, Agents and Atoms. Vars provide a mechanism to refer to a mutable storage location that can be dynamically rebound (to a new storage location) on a per-thread basis. Every Var can (but needn't) have a root binding, which is a binding that is shared by all threads that do not have a per-thread binding. Thus, the value of a Var is the value of its per-thread binding, or, if it is not bound in the thread requesting the value, the value of the root binding, if any.
+
+The special form def creates (and interns) a Var. If the Var did not already exist and no initial value is supplied, the var is unbound:
+user=> (def x)
+#'user/x
+user=> x
+java.lang.IllegalStateException: Var user/x is unbound.
+Supplying an initial value binds the root (even if it was already bound).
+user=> (def x 1)
+#'user/x
+ 
+user=> x
+1
+By default Vars are static, but Vars can be marked as dynamic to allow per-thread bindings via the macro binding. Within each thread they obey a stack discipline:
+user=> (def ^:dynamic x 1)
+user=> (def ^:dynamic y 1)
+user=> (+ x y)
+2
+ 
+user=> (binding [x 2 y 3]
+         (+ x y))
+5
+ 
+user=> (+ x y)
+2
+Bindings created with binding cannot be seen by any other thread. Likewise, bindings created with binding can be assigned to, which provides a means for a nested context to communicate with code before it on the call stack. This capability is opt-in only by setting a metadata tag :dynamic to true as in the code block above. There are scenarios that one might wish to redefine static Vars within a context and Clojure (since version 1.3) provides the functions with-redefs and with-redefs-fn for such purposes.
+
+Functions defined with defn are stored in Vars, allowing for the re-definition of functions in a running program. This also enables many of the possibilities of aspect- or context-oriented programming. For instance, you could wrap a function with logging behavior only in certain call contexts or threads.
+
+
+(set! var-symbol expr)
+Assignment special form.
+
+When the first operand is a symbol, it must resolve to a global var. The value of the var's current thread binding is set to the value of expr. Currently, it is an error to attempt to set the root binding of a var using set!, i.e. var assignments are thread-local.
+In all cases the value of expr is returned.
+
+Note - you cannot assign to function params or local bindings. Only Java fields, Vars, Refs and Agents are mutable in Clojure.
+
+Using set for Java fields is documented in Java Interop.
+
+
+Interning
+The Namespace system maintains global maps of symbols to Var objects (see Namespaces). If a def expression does not find an interned entry in the current namespace for the symbol being def-ed, it creates one, otherwise it uses the existing Var. This find-or-create process is called interning. This means that, unless they have been unmap-ed, Var objects are stable references and need not be looked up every time. It also means that namespaces constitute a global environment in which, as described in Evaluation, the compiler attempts to resolve all free symbols as Vars.
+
+The var special form or the #' reader macro (see Reader) can be used to get an interned Var object instead of its current value.
+
+
+Non-interned Vars
+It is possible to create vars that are not interned by using with-local-vars. These vars will not be found during free symbol resolution, and their values have to be accessed manually. But they can serve as useful thread-local mutable cells.
+----------------------------
+Concurrent Programming       (http://clojure.org/concurrent_programming)
+
+Today's systems have to deal with many simultaneous tasks and leverage the power of multi-core CPUs. Doing so with threads can be very difficult due to the complexities of synchronization. Clojure simplifies multi-threaded programming in several ways. Because the core data structures are immutable, they can be shared readily between threads. However, it is often necessary to have state change in a program. Clojure, being a practical language, allows state to change but provides mechanism to ensure that, when it does so, it remains consistent, while alleviating developers from having to avoid conflicts manually using locks etc. The software transactional memory system (STM), exposed through dosync, ref, set, alter, et al, supports sharing changing state between threads in a synchronous and coordinated manner. The agent system supports sharing changing state between threads in an asynchronous and independent manner. The atoms system supports sharing changing state between threads in a synchronous and independent manner. The dynamic var system, exposed through def, binding, et al, supports isolating changing state within threads.
+
+In all cases, Clojure does not replace the Java thread system, rather it works with it. Clojure functions are java.util.concurrent.Callable, therefore they work with the Executor framework etc.
+
+Most of this is covered in more detail in the concurrency screencast. (http://www.youtube.com/watch?v=dGVqrGmwOAw)
+
+Refs are mutable references to objects. They can be ref-set or altered to refer to different objects during transactions, which are delimited by dosync blocks. All ref modifications within a transaction happen or none do. Also, reads of refs within a transaction reflect a snapshot of the reference world at a particular point in time, i.e. each transaction is isolated from other transactions. If a conflict occurs between 2 transactions trying to modify the same reference, one of them will be retried. All of this occurs without explicit locking.
+
+In this example a vector of Refs containing integers is created (refs), then a set of threads are set up (pool) to run a number of iterations of incrementing every Ref (tasks). This creates extreme contention, but yields the correct result. No locks!
+(import '(java.util.concurrent Executors))
+ 
+(defn test-stm [nitems nthreads niters]
+  (let [refs  (map ref (repeat nitems 0))
+        pool  (Executors/newFixedThreadPool nthreads)
+        tasks (map (fn [t]
+                      (fn []
+                        (dotimes [n niters]
+                          (dosync
+                            (doseq [r refs]
+                              (alter r + 1 t))))))
+                   (range nthreads))]
+    (doseq [future (.invokeAll pool tasks)]
+      (.get future))
+    (.shutdown pool)
+    (map deref refs)))
+ 
+(test-stm 10 10 10000)
+-> (550000 550000 550000 550000 550000 550000 550000 550000 550000 550000)
+In typical use refs can refer to Clojure collections, which, being persistent and immutable, efficiently support simultaneous speculative 'modifications' by multiple transactions. Mutable objects should not be put in refs.
+
+By default Vars are static, but per-thread bindings for Vars defined with metadata mark them as dynamic. Dynamic vars are also mutable references to objects. They have a (thread-shared) root binding which can be established by def, and can be set using set!, but only if they have been bound to a new storage location thread-locally using binding. Those bindings and any subsequent modifications to those bindings will only be seen within the thread by code in the dynamic scope of the binding block. Nested bindings obey a stack protocol and unwind as control exits the binding block.
+(def ^:dynamic *v*)
+ 
+(defn incv [n] (set! *v* (+ *v* n)))
+ 
+(defn test-vars [nthreads niters]
+  (let [pool (Executors/newFixedThreadPool nthreads)
+        tasks (map (fn [t]
+                     #(binding [*v* 0]
+                        (dotimes [n niters]
+                          (incv t))
+                        *v*))
+                   (range nthreads))]
+      (let [ret (.invokeAll pool tasks)]
+        (.shutdown pool)
+        (map #(.get %) ret))))
+ 
+(test-vars 10 1000000)
+-> (0 1000000 2000000 3000000 4000000 5000000 6000000 7000000 8000000 9000000)
+(set! *v* 4)
+-> java.lang.IllegalStateException: Can't change/establish root binding of: *v* with set
+Dynamic vars provide a way to communicate between different points on the call stack without polluting the argument lists and return values of the intervening calls. In addition, dynamic vars support a flavor of context-oriented programming. Because fns defined with defn are stored in vars, they too can be dynamically rebound:
+(defn ^:dynamic say [& args]
+  (apply str args))
+ 
+(defn loves [x y]
+  (say x " loves " y))
+ 
+(defn test-rebind []
+  (println (loves "ricky" "lucy"))
+  (let [say-orig say]
+    (binding [say (fn [& args]
+                      (println "Logging say")
+                      (apply say-orig args))]
+      (println (loves "fred" "ethel")))))
+ 
+(test-rebind)
+ 
+ricky loves lucy
+Logging say
+fred loves ethel
+-----------------------------------------------
+Agents and Asynchronous Actions  (docs from http://clojure.org/agents)
+
+Like Refs, Agents provide shared access to mutable state. Where Refs support coordinated, synchronous change of multiple locations, Agents provide independent, asynchronous change of individual locations. Agents are bound to a single storage location for their lifetime, and only allow mutation of that location (to a new state) to occur as a result of an action. Actions are functions (with, optionally, additional arguments) that are asynchronously applied to an Agent's state and whose return value becomes the Agent's new state. Because actions are functions they can also be multimethods and therefore actions are potentially polymorphic. Also, because the set of functions is open, the set of actions supported by an Agent is also open, a sharp contrast to pattern matching message handling loops provided by some other languages.
+
+Clojure's Agents are reactive, not autonomous - there is no imperative message loop and no blocking receive. The state of an Agent should be itself immutable (preferably an instance of one of Clojure's persistent collections), and the state of an Agent is always immediately available for reading by any thread (using the deref function or reader macro @) without any messages, i.e. observation does not require cooperation or coordination.
+
+Agent action dispatches take the form (send agent fn args*). send (and send-off) always returns immediately. At some point later, in another thread, the following will happen:
+The given fn will be applied to the state of the Agent and the args, if any were supplied.
+The return value of fn will be passed to the validator function, if one has been set on the Agent. See set-validator! for details.
+If the validator succeeds or if no validator was given, the return value of the given fn will become the new state of the Agent.
+If any watchers were added to the Agent, they will be called. See add-watch for details.
+If during the function execution any other dispatches are made (directly or indirectly), they will be held until after the state of the Agent has been changed.
+
+If any exceptions are thrown by an action function, no nested dispatches will occur, and the exception will be cached in the Agent itself. When an Agent has errors cached, any subsequent interactions will immediately throw an exception, until the agent's errors are cleared. Agent errors can be examined with agent-error and the agent restarted with restart-agent.
+
+The actions of all Agents get interleaved amongst threads in a thread pool. At any point in time, at most one action for each Agent is being executed. Actions dispatched to an agent from another single agent or thread will occur in the order they were sent, potentially interleaved with actions dispatched to the same agent from other sources. send should be used for actions that are CPU limited, while send-off is appropriate for actions that may block on IO.
+
+Agents are integrated with the STM - any dispatches made in a transaction are held until it commits, and are discarded if it is retried or aborted.
+
+As with all of Clojure's concurrency support, no user-code locking is involved.
+
+Note that use of Agents starts a pool of non-daemon background threads that will prevent shutdown of the JVM. Use shutdown-agents to terminate these threads and allow shutdown.
+
+Example
+This example is an implementation of the send-a-message-around-a-ring test. A chain of n agents is created, then a sequence of m actions are dispatched to the head of the chain and relayed through it.
+(defn relay [x i]
+  (when (:next x)
+    (send (:next x) relay i))
+  (when (and (zero? i) (:report-queue x))
+    (.put (:report-queue x) i))
+  x)
+ 
+(defn run [m n]
+  (let [q (new java.util.concurrent.SynchronousQueue)
+        hd (reduce (fn [next _] (agent {:next next}))
+                   (agent {:report-queue q}) (range (dec m)))]
+    (doseq [i (reverse (range n))]
+      (send hd relay i))
+    (.take q)))
+ 
+; 1 million message sends:
+(time (run 1000 1000))
+->"Elapsed time: 2959.254 msecs"
+--------------------------------------------------------
+Atoms
+
+Atoms provide a way to manage shared, synchronous, independent state. They are a reference type like refs and vars. You create an atom with atom, and can access its state with deref/@. Like refs and agents, atoms support validators. To change the value of an atom, you can use swap!. A lower-level compare-and-set! is also provided. Changes to atoms are always free of race conditions.
+
+As with all reference types, the intended use of atom is to hold one of Clojure's immutable data structures. And, similar to ref's alter and agent's send, you change the value by applying a function to the old value. This is done in an atomic manner by swap! Internally, swap! reads the current value, applies the function to it, and attempts to compare-and-set it in. Since another thread may have changed the value in the intervening time, it may have to retry, and does so in a spin loop. The net effect is that the value will always be the result of the application of the supplied function to a current value, atomically. However, because the function might be called multiple times, it must be free of side effects.
+
+Atoms are an efficient way to represent some state that will never need to be coordinated with any other, and for which you wish to make synchronous changes (unlike agents, which are similarly independent but asynchronous). A typical usage might be for memoization:
+
+(defn memoize [f]
+  (let [mem (atom {})]
+    (fn [& args]
+      (if-let [e (find @mem args)]
+        (val e)
+        (let [ret (apply f args)]
+          (swap! mem assoc args ret)
+          ret)))))
+ 
+(defn fib [n]
+  (if (<= n 1)
+    n
+    (+ (fib (dec n)) (fib (- n 2)))))
+ 
+(time (fib 35))
+user=> "Elapsed time: 941.445 msecs"
+ 
+(def fib (memoize fib))
+ 
+(time (fib 35))
+ 
+user=> "Elapsed time: 0.044 msecs"
+--------------------------------------------------------
+Refs and Transactions
+
+While Vars ensure safe use of mutable storage locations via thread isolation, transactional references (Refs) ensure safe shared use of mutable storage locations via a software transactional memory (STM) system. Refs are bound to a single storage location for their lifetime, and only allow mutation of that location to occur within a transaction.
+
+Clojure transactions should be easy to understand if you've ever used database transactions - they ensure that all actions on Refs are atomic, consistent, and isolated. Atomic means that every change to Refs made within a transaction occurs or none do. Consistent means that each new value can be checked with a validator function before allowing the transaction to commit. Isolated means that no transaction sees the effects of any other transaction while it is running. Another feature common to STMs is that, should a transaction have a conflict while running, it is automatically retried.
+
+There are many ways to do STMs (locking/pessimistic, lock-free/optimistic and hybrids) and it is still a research problem. The Clojure STM uses multiversion concurrency control with adaptive history queues for snapshot isolation, and provides a distinct commute operation.
+
+In practice, this means:
+All reads of Refs will see a consistent snapshot of the 'Ref world' as of the starting point of the transaction (its 'read point'). The transaction will see any changes it has made. This is called the in-transaction-value.
+All changes made to Refs during a transaction (via ref-set, alter or commute) will appear to occur at a single point in the 'Ref world' timeline (its 'write point').
+No changes will have been made by any other transactions to any Refs that have been ref-set/altered/ensured by this transaction.
+Changes may have been made by other transactions to any Refs that have been commuted by this transaction. That should be okay since the function applied by commute should be commutative.
+Readers and commuters will never block writers, commuters, or other readers.
+Writers will never block commuters, or readers.
+I/O and other activities with side-effects should be avoided in transactions, since transactions will be retried. The io! macro can be used to prevent the use of an impure function in a transaction.
+If a constraint on the validity of a value of a Ref that is being changed depends upon the simultaneous value of a Ref that is not being changed, that second Ref can be protected from modification by calling ensure. Refs 'ensured' this way will be protected (item #3), but don't change the world (item #2).
+The Clojure MVCC STM is designed to work with the persistent collections, and it is strongly recommended that you use the Clojure collections as the values of your Refs. Since all work done in an STM transaction is speculative, it is imperative that there be a low cost to making copies and modifications. Persistent collections have free copies (just use the original, it can't be changed), and 'modifications' share structure efficiently. In any case:
+The values placed in Refs must be, or be considered, immutable!! Otherwise, Clojure can't help you.
+
+Example
+In this example a vector of references to vectors is created, each containing (initially sequential) unique numbers. Then a set of threads are started that repeatedly select two random positions in two random vectors and swap them, in a transaction. No special effort is made to prevent the inevitable conflicts other than the use of transactions.
+(defn run [nvecs nitems nthreads niters]
+  (let [vec-refs (vec (map (comp ref vec)
+                           (partition nitems (range (* nvecs nitems)))))
+        swap #(let [v1 (rand-int nvecs)
+                    v2 (rand-int nvecs)
+                    i1 (rand-int nitems)
+                    i2 (rand-int nitems)]
+                (dosync
+                 (let [temp (nth @(vec-refs v1) i1)]
+                   (alter (vec-refs v1) assoc i1 (nth @(vec-refs v2) i2))
+                   (alter (vec-refs v2) assoc i2 temp))))
+        report #(do
+                 (prn (map deref vec-refs))
+                 (println "Distinct:"
+                          (count (distinct (apply concat (map deref vec-refs))))))]
+    (report)
+    (dorun (apply pcalls (repeat nthreads #(dotimes [_ niters] (swap)))))
+    (report)))
+ 
+When run, we see no values get lost or duplicated in the shuffle:
+(run 100 10 10 100000)
+ 
+([0 1 2 3 4 5 6 7 8 9] [10 11 12 13 14 15 16 17 18 19] ...
+ [990 991 992 993 994 995 996 997 998 999])
+Distinct: 1000
+ 
+([382 318 466 963 619 22 21 273 45 596] [808 639 804 471 394 904 952 75 289 778] ...
+ [484 216 622 139 651 592 379 228 242 355])
+Distinct: 1000
+--------------------------------------------------------
+The Reader
+
+Clojure is a homoiconic language, which is a fancy term describing the fact that Clojure programs are represented by Clojure data structures. This is a very important difference between Clojure (and Common Lisp) and most other programming languages - Clojure is defined in terms of the evaluation of data structures and not in terms of the syntax of character streams/files. It is quite common, and easy, for Clojure programs to manipulate, transform and produce other Clojure programs.
+
+That said, most Clojure programs begin life as text files, and it is the task of the reader to parse the text and produce the data structure the compiler will see. This is not merely a phase of the compiler. The reader, and the Clojure data representations, have utility on their own in many of the same contexts one might use XML or JSON etc.
+
+One might say the reader has syntax defined in terms of characters, and the Clojure language has syntax defined in terms of symbols, lists, vectors, maps etc. The reader is represented by the function read, which reads the next form (not character) from a stream, and returns the object represented by that form.
+
+Since we have to start somewhere, this reference starts where evaluation starts, with the reader forms. This will inevitably entail talking about data structures whose descriptive details, and interpretation by the compiler, will follow.
+
+Reader forms
+Symbols
+Symbols begin with a non-numeric character and can contain alphanumeric characters and *, +, !, -, _, and ? (other characters will be allowed eventually, but not all macro characters have been determined). '/' has special meaning, it can be used once in the middle of a symbol to separate the namespace from the name, e.g. my-namespace/foo. '/' by itself names the division function. '.' has special meaning - it can be used one or more times in the middle of a symbol to designate a fully-qualified class name, e.g. java.util.BitSet, or in namespace names. Symbols beginning or ending with '.' are reserved by Clojure. Symbols containing / or . are said to be 'qualified'. Symbols beginning or ending with ':' are reserved by Clojure. A symbol can contain one or more non-repeating ':'s.
+Literals
+Strings - Enclosed in "double quotes". May span multiple lines. Standard Java escape characters are supported.
+Numbers - generally represented as per Java
+Integers can be indefinitely long and will be read as Longs when in range and clojure.lang.BigInts otherwise. Integers with an N suffix are always read as BigInts. When possible, they can be specified in any base with radix from 2 to 36 (see Long.parseLong()); for example 2r101010, 8r52, 36r16, and 42 are all the same Long.
+Floating point numbers are read as Doubles; with M suffix they are read as BigDecimals.
+Ratios are supported, e.g. 22/7.
+Characters - preceded by a backslash: \c. \newline, \space, \tab, \formfeed, \backspace, and \return yield the corresponding characters. Unicode characters are represented with \uNNNN as in Java. Octals are represented with \oNNN.
+nil Means 'nothing/no-value'- represents Java null and tests logical false
+Booleans - true and false
+Keywords
+Keywords are like symbols, except:
+They can and must begin with a colon, e.g. :fred.
+They cannot contain '.' or name classes.
+A keyword that begins with two colons is resolved in the current namespace:
+In the user namespace, ::rect is read as :user/rect
+Lists
+Lists are zero or more forms enclosed in parentheses:
+(a b c)
+Vectors
+Vectors are zero or more forms enclosed in square brackets:
+[1 2 3]
+Maps
+Maps are zero or more key/value pairs enclosed in braces:
+{:a 1 :b 2}
+Commas are considered whitespace, and can be used to organize the pairs:
+{:a 1, :b 2}
+Keys and values can be any forms.
+Sets
+Sets are zero or more forms enclosed in braces preceded by #:
+#{:a :b :c}
+deftype, defrecord, and constructor calls (version 1.3 and later):
+Calls to Java class, deftype, and defrecord constructors can be called using their fully qualified class name preceded by # and followed by a vector:
+#my.klass_or_type_or_record[:a :b :c]
+The elements in the vector part are passed unevaluated to the relevant constructor. defrecord instances can also be created with a similar form that takes a map instead:
+#my.record{:a 1, :b 2}
+The keyed values in the map are assigned unevaluated to the relevant fields in the defrecord. Any defrecord fields without corresponding entries in the literal map are assigned nil as their value. Any extra keyed values in the map literal are added to the resulting defrecord instance.
+
+Macro characters
+The behavior of the reader is driven by a combination of built-in constructs and an extension system called the read table. Entries in the read table provide mappings from certain characters, called macro characters, to specific reading behavior, called reader macros. Unless indicated otherwise, macro characters cannot be used in user symbols.
+Quote (')
+'form => (quote form)
+Character (\)
+As per above, yields a character literal.
+Comment (;)
+Single-line comment, causes the reader to ignore everything from the semicolon to the end-of-line.
+Deref (@)
+@form => (deref form)
+Metadata (^)
+Metadata is a map associated with some kinds of objects: Symbols, Lists, Vector, Sets, Maps, tagged literals returning an IMeta, and record, type, and constructor calls. The metadata reader macro first reads the metadata and attaches it to the next form read (see with-meta to attach meta to an object):
+^{:a 1 :b 2} [1 2 3] yields the vector [1 2 3] with a metadata map of {:a 1 :b 2}.
+
+A shorthand version allows the metadata to be a simple symbol or string, in which case it is treated as a single entry map with a key of :tag and a value of the (resolved) symbol or string, e.g.:
+^String x is the same as ^{:tag java.lang.String} x
+Such tags can be used to convey type information to the compiler.
+
+Another shorthand version allows the metadata to be a keyword, in which case it is treated as a single entry map with a key of the keyword and a value of true, e.g.:
+^:dynamic x is the same as ^{:dynamic true} x
+
+Metadata can be chained in which case they are merged from right to left.
+Dispatch (#)
+The dispatch macro causes the reader to use a reader macro from another table, indexed by the character following #:
+#{} - see Sets above
+Regex patterns (#"pattern")
+A regex pattern is read and compiled at read time. The resulting object is of type java.util.regex.Pattern.
+Var-quote (#')
+#'x => (var x)
+Anonymous function literal (#())
+#(...) => (fn [args] (...))
+where args are determined by the presence of argument literals taking the form %, %n or %&. % is a synonym for %1, %n designates the nth arg (1-based), and %& designates a rest arg. This is not a replacement for fn - idiomatic used would be for very short one-off mapping/filter fns and the like. #() forms cannot be nested.
+Ignore next form (#_)
+The form following #_ is completely skipped by the reader. (This is a more complete removal than the comment macro which yields nil).
+
+Syntax-quote (`, note, the "backquote" character), Unquote (~) and Unquote-splicing (~@)
+For all forms other than Symbols, Lists, Vectors, Sets and Maps, `x is the same as 'x.
+
+For Symbols, syntax-quote resolves the symbol in the current context, yielding a fully-qualified symbol (i.e. namespace/name or fully.qualified.Classname). If a symbol is non-namespace-qualified and ends with '#', it is resolved to a generated symbol with the same name to which '_' and a unique id have been appended. e.g. x# will resolve to x_123. All references to that symbol within a syntax-quoted expression resolve to the same generated symbol.
+
+For Lists/Vectors/Sets/Maps, syntax-quote establishes a template of the corresponding data structure. Within the template, unqualified forms behave as if recursively syntax-quoted, but forms can be exempted from such recursive quoting by qualifying them with unquote or unquote-splicing, in which case they will be treated as expressions and be replaced in the template by their value, or sequence of values, respectively.
+
+For example:
+    user=> (def x 5)
+    user=> (def lst '(a b c))
+    user=> `(fred x ~x lst ~@lst 7 8 :nine)
+    (user/fred user/x 5 user/lst a b c 7 8 :nine)
+The read table is currently not accessible to user programs.
+
+extensible data notation (edn)
+Clojure's reader supports a superset of extensible data notation (edn). The edn specification is under active development, and complements this document by defining a subset of Clojure data syntax in a language-neutral way.
+
+Tagged Literals
+Tagged literals are Clojure's implementation of edn tagged elements.
+
+When Clojure starts, it searches for files named data_readers.clj at the root of the classpath. Each such file must contain a Clojure map of symbols, like this:
+    {foo/bar my.project.foo/bar
+     foo/baz my.project/baz}
+The key in each pair is a tag that will be recognized by the Clojure reader. The value in the pair is the fully-qualified name of a Var which will be invoked by the reader to parse the form following the tag. For example, given the data_readers.clj file above, the Clojure reader would parse this form:
+    #foo/bar [1 2 3]
+by invoking the Var #'my.project.foo/bar on the vector [1 2 3]. The data reader function is invoked on the form AFTER it has been read as a normal Clojure data structure by the reader.
+
+Reader tags without namespace qualifiers are reserved for Clojure. Default reader tags are defined in default-data-readers but may be overridden in data_readers.clj or by rebinding *data-readers*. If no data reader is found for a tag, the function bound in *default-data-reader-fn* will be invoked with the tag and value to produce a value. If *default-data-reader-fn* is nil (the default), a RuntimeException will be thrown.
+--------------------------------------------------------
+Datatypes - deftype, defrecord and reify
+
+Motivation
+
+Clojure is written in terms of abstractions. There are abstractions for sequences, collections, callability, etc. In addition, Clojure supplies many implementations of these abstractions. The abstractions are specified by host interfaces, and the implementations by host classes. While this was sufficient for bootstrapping the language, it left Clojure without similar abstraction and low-level implementation facilities. The protocols and datatypes features add powerful and flexible mechanisms for abstraction and data structure definition with no compromises vs the facilities of the host platform.
+
+Basics
+
+The datatype features - deftype , defrecord and reify , provide the mechanism for defining implementations of abstractions, and in the case of reify, instances of those implementations. The abstractions themselves are defined by either protocols or interfaces. A datatype provides a host type, (named in the case of deftype and defrecord, anonymous in the case of reify), with some structure (explicit fields in the case of deftype and defrecord, implicit closure in the case of reify), and optional in-type implementations of abstraction methods. They support, in a relatively clean manner, access to the highest-performance primitive representation and polymorphism mechanisms of the host. N.B. that they are not merely host-in-parens constructs. They support only a circumscribed subset of the host facilities, often with more dynamism than the host itself. The intent is that, unless interop forces one to go beyond their circumscribed scope, one need not leave Clojure to get the highest-performing data structures possible on the platform.
+
+deftype and defrecord
+
+deftype and defrecord dynamically generate compiled bytecode for a named class with a set of given fields, and, optionally, methods for one or more protocols and/or interfaces. They are suitable for dynamic and interactive development, need not be AOT compiled, and can be re-evaluated in the course of a single session. They are similar to defstruct in generating data structures with named fields, but differ from defstruct in that:
+
+They generate a unique class, with fields corresponding to the given names.
+the resulting class has a proper type, unlike conventions for encoding type for structs in metadata
+because they generate a named class, it has an accessible constructor
+fields can have type hints, and can be primitive
+note that currently a type hint of a non-primitive type will not be used to constrain the field type nor the constructor arg, but will be used to optimize its use in the class methods
+constraining the field type and constructor arg is planned
+a deftype/defrecord can implement one or more protocols and/or interfaces
+deftype/defrecord can be written with a special reader syntax #my.thing[1 2 3] where:
+each element in the vector form is passed to the deftype/defrecord's constructor un-evaluated
+the deftype/defrecord name must be fully qualified
+only available in Clojure versions later than 1.3
+when a deftype/defrecord Foo is defined a corresponding function ->Foo is defined that passes its arguments to the constructor (versions 1.3 and later only)
+
+deftype and defrecord differ in the following ways:
+
+deftype provides no functionality not specified by the user, other than a constructor
+defrecord provides a complete implementation of a persistent map, including:
+value-based equality and hashCode
+metadata support
+associative support
+keyword accessors for fields
+extensible fields (you can assoc keys not supplied with the defrecord definition)
+etc
+deftype supports mutable fields, defrecord does not
+defrecord support an additional reader form of #my.record{:a 1, :b 2} taking a map that initializes a defrecord according to:
+the defrecord name must be fully qualified
+the elements in the map are un-evaluated
+existing defrecord fields take the keyed values
+defrecord fields without keyed values in the literal map are initialized to nil
+additional keyed values are allowed and added to the defrecord
+only available in Clojure versions later than 1.3
+when a defrecord Bar is defined a corresponding function map->Bar is defined that takes a map and initializes a new record instance with its contents (versions 1.3 and later only)
+
+Why have both deftype and defrecord?
+
+It ends up that classes in most OO programs fall into two distinct categories: those classes that are artifacts of the implementation/programming domain, e.g. String or collection classes, or Clojure's reference types; and classes that represent application domain information, e.g. Employee, PurchaseOrder etc. It has always been an unfortunate characteristic of using classes for application domain information that it resulted in information being hidden behind class-specific micro-languages, e.g. even the seemingly harmless employee.getName() is a custom interface to data. Putting information in such classes is a problem, much like having every book being written in a different language would be a problem. You can no longer take a generic approach to information processing. This results in an explosion of needless specificity, and a dearth of reuse.
+
+This is why Clojure has always encouraged putting such information in maps, and that advice doesn't change with datatypes. By using defrecord you get generically manipulable information, plus the added benefits of type-driven polymorphism, and the structural efficiencies of fields. OTOH, it makes no sense for a datatype that defines a collection like vector to have a default implementation of map, thus deftype is suitable for defining such programming constructs.
+
+Overall, records will be better than structmaps for all information-bearing purposes, and you should move such structmaps to defrecord. It is unlikely much code was trying to use structmaps for programming constructs, but if so, you will find deftype much more suitable.
+
+AOT-compiled deftype/defrecord may be suitable for some of the use cases of gen-class, where their limitations are not prohibitive. In those cases, they will have better performance than gen-class.
+
+Datatypes and protocols are opinionated
+
+While datatypes and protocols have well-defined relationships with host constructs, and make for a great way to expose Clojure functionality to Java programs, they are not primarily interop constructs. That is, they make no effort to completely mimic or adapt to all of the OO mechanisms of the host. In particular, they reflect the following opinions:
+
+Concrete derivation is bad
+you cannot derive datatypes from concrete classes, only interfaces
+You should always program to protocols or interfaces
+datatypes cannot expose methods not in their protocols or interfaces
+Immutability should be the default
+and is the only option for records
+Encapsulation of information is folly
+fields are public, use protocols/interfaces to avoid dependencies
+Tying polymorphism to inheritance is bad
+protocols free you from that
+
+If you use datatypes and protocols you will have a clean, interface-based API to offer your Java consumers. If you are dealing with a clean, interface-based Java API, datatypes and protocols can be used to interoperate with and extend it. If you have a 'bad' Java API, you will have to use gen-class. Only in this way can the programming constructs you use to design and implement your Clojure programs be free of the incidental complexities of OO.
+
+reify
+
+While deftype and defrecord define named types, reify defines both an anonymous type and creates an instance of that type. The use case is where you need a one-off implementation of one or more protocols or interfaces and would like to take advantage of the local context. In this respect it is use case similar to proxy, or anonymous inner classes in Java.
+
+The method bodies of reify are lexical closures, and can refer to the surrounding local scope. reify differs from proxy in that:
+
+Only protocols or interfaces are supported, no concrete superclass.
+The method bodies are true methods of the resulting class, not external fns.
+Invocation of methods on the instance is direct, not using map lookup.
+No support for dynamic swapping of methods in the method map.
+
+The result is better performance than proxy, both in construction and invocation. reify is preferable to proxy in all cases where its constraints are not prohibitive.
+
+Java annotation support
+
+Types created with deftype, defrecord, and definterface, can emit classes that include Java annotations for Java interop. Annotations are described as meta on:
+
+Type name (deftype/record/interface) - class annotations
+Field names (deftype/record) - field annotations
+Method names (deftype/record) - method annotations
+
+Example:
+
+(import [java.lang.annotation Retention RetentionPolicy Target ElementType]
+        [javax.xml.ws WebServiceRef WebServiceRefs])
+(definterface Foo (foo []))
+ 
+;annotation on type
+(deftype ^{Deprecated true 
+            Retention RetentionPolicy/RUNTIME 
+            javax.annotation.processing.SupportedOptions ["foo" "bar" "baz"]
+            javax.xml.ws.soap.Addressing {:enabled false :required true}
+            WebServiceRefs [(WebServiceRef {:name "fred" :type String}) 
+                            (WebServiceRef {:name "ethel" :mappedName "lucy"})]} 
+  Bar [^int a 
+       ;on field
+       ^{:tag int
+          Deprecated true 
+          Retention RetentionPolicy/RUNTIME 
+          javax.annotation.processing.SupportedOptions ["foo" "bar" "baz"]
+          javax.xml.ws.soap.Addressing {:enabled false :required true}
+          WebServiceRefs [(WebServiceRef {:name "fred" :type String}) 
+                          (WebServiceRef {:name "ethel" :mappedName "lucy"})]} 
+       b]
+  ;on method
+  Foo (^{Deprecated true 
+          Retention RetentionPolicy/RUNTIME 
+          javax.annotation.processing.SupportedOptions ["foo" "bar" "baz"]
+          javax.xml.ws.soap.Addressing {:enabled false :required true}
+          WebServiceRefs [(WebServiceRef {:name "fred" :type String}) 
+                          (WebServiceRef {:name "ethel" :mappedName "lucy"})]}
+       foo [this] 42))
+ 
+(seq (.getAnnotations Bar))
+(seq (.getAnnotations (.getField Bar "b")))
+(seq (.getAnnotations (.getMethod Bar "foo" nil)))
+--------------------------------------------------------
+Protocols
+
+Protocols were introduced in Clojure 1.2.
+
+Motivation
+
+Clojure is written in terms of abstractions. There are abstractions for sequences, collections, callability, etc. In addition, Clojure supplies many implementations of these abstractions. The abstractions are specified by host interfaces, and the implementations by host classes. While this was sufficient for bootstrapping the language, it left Clojure without similar abstraction and low-level implementation facilities. The protocols and datatypes features add powerful and flexible mechanisms for abstraction and data structure definition with no compromises vs the facilities of the host platform.
+
+There are several motivations for protocols:
+Provide a high-performance, dynamic polymorphism construct as an alternative to interfaces
+Support the best parts of interfaces
+specification only, no implementation
+a single type can implement multiple protocols
+While avoiding some of the drawbacks
+Which interfaces are implemented is a design-time choice of the type author, cannot be extended later (although interface injection might eventually address this)
+implementing an interface creates an isa/instanceof type relationship and hierarchy
+Avoid the 'expression problem' by allowing independent extension of the set of types, protocols, and implementations of protocols on types, by different parties
+do so without wrappers/adapters
+Support the 90% case of multimethods (single dispatch on type) while providing higher-level abstraction/organization
+
+Basics
+
+A protocol is a named set of named methods and their signatures, defined using defprotocol:
+(defprotocol AProtocol
+  "A doc string for AProtocol abstraction"
+  (bar [a b] "bar docs")
+  (baz [a] [a b] [a b c] "baz docs"))
+No implementations are provided
+Docs can be specified for the protocol and the functions
+The above yields a set of polymorphic functions and a protocol object
+all are namespace-qualified by the namespace enclosing the definition
+The resulting functions dispatch on the type of their first argument, and thus must have at least one argument
+defprotocol is dynamic, and does not require AOT compilation
+
+defprotocol will automatically generate a corresponding interface, with the same name as the protocol, i.e. given a protocol my.ns/Protocol, an interface my.ns.Protocol. The interface will have methods corresponding to the protocol functions, and the protocol will automatically work with instances of the interface.
+Note that you do not need to use this interface with deftype , defrecord , or reify, as they support protocols directly:
+(defprotocol P
+  (foo [x])
+  (bar-me [x] [x y]))
+ 
+(deftype Foo [a b c]
+  P
+  (foo [x] a)
+  (bar-me [x] b)
+  (bar-me [x y] (+ c y)))
+ 
+(bar-me (Foo. 1 2 3) 42)
+=> 45
+ 
+(foo
+ (let [x 42]
+   (reify P
+     (foo [this] 17)
+     (bar-me [this] x)
+     (bar-me [this y] x))))
+ 
+=> 17
+A Java client looking to participate in the protocol can do so most efficiently by implementing the protocol-generated interface.
+External implementations of the protocol (which are needed when you want a class or type not in your control to participate in the protocol) can be provided using the extend construct:
+(extend AType
+  AProtocol
+   {:foo an-existing-fn
+    :bar (fn [a b] ...)
+    :baz (fn ([a]...) ([a b] ...)...)}
+  BProtocol
+    {...}
+...)
+extend takes a type/class (or interface, see below), a one or more protocol + function map (evaluated) pairs.
+Will extend the polymorphism of the protocol's methods to call the supplied functions when an AType is provided as the first argument
+Function maps are maps of the keywordized method names to ordinary fns
+this facilitates easy reuse of existing fns and maps, for code reuse/mixins without derivation or composition
+You can implement a protocol on an interface
+this is primarily to facilitate interop with the host (e.g. Java)
+but opens the door to incidental multiple inheritance of implementation
+since a class can inherit from more than one interface, both of which implement the protocol
+if one interface is derived from the other, the more derived is used, else which one is used is unspecified.
+The implementing fn can presume first argument is instanceof AType
+You can implement a protocol on nil
+To define a default implementation of protocol (for other than nil) just use Object
+
+Protocols are fully reified and support reflective capabilities via extends? , extenders , and satisfies? .
+Note the convenience macros extend-type , and extend-protocol
+If you are providing external definitions inline, these will be more convenient than using extend directly
+(extend-type MyType
+  Countable
+    (cnt [c] ...)
+  Foo
+    (bar [x y] ...)
+    (baz ([x] ...) ([x y zs] ...)))
+ 
+  ;expands into:
+ 
+(extend MyType
+  Countable
+   {:cnt (fn [c] ...)}
+  Foo
+   {:baz (fn ([x] ...) ([x y zs] ...))
+    :bar (fn [x y] ...)})
+--------------------------------------------------------
+Multimethods and Hierarchies
+
+Clojure eschews the traditional object-oriented approach of creating a new data type for each new situation, instead preferring to build a large library of functions on a small set of types. However, Clojure fully recognizes the value of runtime polymorphism in enabling flexible and extensible system architecture. Clojure supports sophisticated runtime polymorphism through a multimethod system that supports dispatching on types, values, attributes and metadata of, and relationships between, one or more arguments.
+
+A Clojure multimethod is a combination of a dispatching function, and one or more methods. When a multimethod is defined, using defmulti, a dispatching function must be supplied. This function will be applied to the arguments to the multimethod in order to produce a dispatching value. The multimethod will then try to find the method associated with the dispatching value or a value from which the dispatching value is derived. If one has been defined (via defmethod), it will then be called with the arguments and that will be the value of the multimethod call. If no method is associated with the dispatching value, the multimethod will look for a method associated with the default dispatching value (which defaults to :default), and will use that if present. Otherwise the call is an error.
+
+The multimethod system exposes this API: defmulti creates new multimethods, defmethod creates and installs a new method of multimethod associated with a dispatch-value, remove-method removes the method associated with a dispatch-value and prefer-method creates an ordering between methods when they would otherwise be ambiguous.
+
+Derivation is determined by a combination of either Java inheritance (for class values), or using Clojure's ad hoc hierarchy system. The hierarchy system supports derivation relationships between names (either symbols or keywords), and relationships between classes and names. The derive function create these relationships, and the isa? function tests for their existence. Note that isa? is not instance?.
+
+You can define hierarchical relationships with (derive child parent). Child and parent can be either symbols or keywords, and must be namespace-qualified:
+
+Note the :: reader syntax, ::keywords resolve namespaces
+::rect
+-> :user/rect
+derive is the fundamental relationship-maker
+(derive ::rect ::shape)
+(derive ::square ::rect)
+parents/ancestors/descendants and isa? let you query the hierarchy
+(parents ::rect)
+-> #{:user/shape}
+ 
+(ancestors ::square)
+-> #{:user/rect :user/shape}
+ 
+(descendants ::shape)
+-> #{:user/rect :user/square}
+(= x y) implies (isa? x y)
+(isa? 42 42)
+-> true
+isa? uses the hierarchy system
+(isa? ::square ::shape)
+-> true
+You can also use a class as the child (but not the parent, the only way to make something the child of a class is via Java inheritance).
+This allows you to superimpose new taxonomies on the existing Java class hierarchy:
+(derive java.util.Map ::collection)
+(derive java.util.Collection ::collection)
+ 
+(isa? java.util.HashMap ::collection)
+-> true
+isa? also tests for class relationships:
+(isa? String Object)
+-> true
+isa? works with vectors by calling isa? on their corresponding elements:
+(isa? [::square ::rect] [::shape ::shape])
+-> true
+as do parents/ancestors (but not descendants, since class descendants are an open set)
+(ancestors java.util.ArrayList)
+-> #{java.lang.Cloneable java.lang.Object java.util.List
+    java.util.Collection java.io.Serializable
+    java.util.AbstractCollection
+    java.util.RandomAccess java.util.AbstractList}
+isa? based dispatch
+
+Multimethods use isa? rather than = when testing for dispatch value matches. Note that the first test of isa? is =, so exact matches work.
+(defmulti foo class)
+(defmethod foo ::collection [c] :a-collection)
+(defmethod foo String [s] :a-string)
+ 
+(foo [])
+:a-collection
+ 
+(foo (java.util.HashMap.))
+:a-collection
+ 
+(foo "bar")
+:a-string
+prefer-method is used for disambiguating in case of multiple matches where neither dominates the other. You can just declare, per multimethod, that one dispatch value is preferred over another:
+(derive ::rect ::shape)
+ 
+(defmulti bar (fn [x y] [x y]))
+(defmethod bar [::rect ::shape] [x y] :rect-shape)
+(defmethod bar [::shape ::rect] [x y] :shape-rect)
+ 
+(bar ::rect ::rect)
+-> java.lang.IllegalArgumentException:
+   Multiple methods match dispatch value:
+   [:user/rect :user/rect] -> [:user/rect :user/shape]
+   and [:user/shape :user/rect],
+   and neither is preferred
+ 
+(prefer-method bar [::rect ::shape] [::shape ::rect])
+(bar ::rect ::rect)
+-> :rect-shape
+All of the examples above use the global hierarchy used by the multimethod system, but entire independent hierarchies can also be created with make-hierarchy, and all of the above functions can take an optional hierarchy as a first argument.
+
+This simple system is extremely powerful. One way to understand the relationship between Clojure multimethods and traditional Java-style single dispatch is that single dispatch is like a Clojure multimethod whose dispatch function calls getClass on the first argument, and whose methods are associated with those classes. Clojure multimethods are not hard-wired to class/type, they can be based on any attribute of the arguments, on multiple arguments, can do validation of arguments and route to error-handling methods etc.
+
+Note: In this example, the keyword :Shape is being used as the dispatch function, as keywords are functions of maps, as described in the Data Structures section.
+(defmulti area :Shape)
+(defn rect [wd ht] {:Shape :Rect :wd wd :ht ht})
+(defn circle [radius] {:Shape :Circle :radius radius})
+(defmethod area :Rect [r]
+    (* (:wd r) (:ht r)))
+(defmethod area :Circle [c]
+    (* (. Math PI) (* (:radius c) (:radius c))))
+(defmethod area :default [x] :oops)
+(def r (rect 4 13))
+(def c (circle 12))
+(area r)
+-> 52
+(area c)
+-> 452.3893421169302
+(area {})
+-> :oops
+--------------------------------------------------------
+Reducers
+
+Reducers provide an alternative approach to using sequences to manipulate standard Clojure collections. Sequence functions are typically applied lazily, in order, create intermediate results, and in a single thread. However, many sequence functions (like map and filter) could conceptually be applied in parallel, yielding code that will get faster automatically as machines get more cores. For more details on the rationale for reducers, see the original blog posts.
+
+A reducer is the combination of a reducible collection (a collection that knows how to reduce itself) with a reducing function (the "recipe" for what needs to be done during the reduction). The standard sequence operations are replaced with new versions that do not perform the operation but merely transform the reducing function. Execution of the operations is deferred until the final reduction is performed. This removes the intermediate results and lazy evaluation seen with sequences.
+
+Additionally, some collections (persistent vectors and maps) are foldable. The fold operation on a reducer executes the reduction in parallel by:
+Partitioning the reducible collection at a specified granularity (default = 512 elements)
+Applying reduce to each partition
+Recursively combining each partition using Java's fork/join framework.
+
+If a collection does not support folding, it will fall back to non-parallel reduce instead.
+
+reduce and fold
+
+The clojure.core.reducers namespace (aliased here as r) provides an alternate r/reduce function.
+
+(r/reduce f coll)
+(r/reduce f init coll)
+
+The reducers version differs in that:
+Map colls are reduced with reduce-kv
+When init is not provided, f is invoked with no arguments to produce an identity value
+Note: f may be invoked multiple times to provide the identity value
+
+In general most users will not call r/reduce directly and instead should prefer r/fold, which implements parallel reduce and combine. However, it may be useful to execute an eager reduce with fewer intermediate results.
+
+(r/fold reducef coll)
+(r/fold combinef reducef coll)
+(r/fold n combinef reducef coll)
+
+r/fold takes a reducible collection and partitions it into groups of approximately n (default 512) elements. Each group is reduced using the reducef function. The reducef function will be called with no arguments to produce an identity value in each partition. The results of those reductions are then reduced with the combinef (defaults to reducef) function. When called with no arguments, (combinef) must produce its identity element - this will be called multiple times. Operations may be performed in parallel. Results will preserve order.
+
+The following functions (analagous to the sequence versions) create reducers from a reducible or foldable collection: r/map r/mapcat r/filter r/remove r/flatten r/take-while r/take and r/drop. None of these functions actually transforms the source collection. To produce an accumulated result, you must use r/reduce or r/fold. To produce an output collection, use clojure.core/into to choose the collection type or the provided r/foldcat to produce a collection that is reducible, foldable, seqable, and counted.
+
+Using reducers
+
+Use fold to sum with +:
+(require '[clojure.core.reducers :as r])
+(r/fold + (r/filter even? (r/map inc [1 1 1 2])))
+;=> 6
+Use into to produce a final collection:
+(into [] (r/filter even? (r/map inc (range 100000))))
+Or r/foldcat:
+(r/foldcat (r/filter even? (r/map inc (range 100000))))
+Specify a reduce function and a combine function with fold:
+(defn count-words
+  ([] {})
+  ([freqs word]
+    (assoc freqs word (inc (get freqs word 0)))))
+ 
+(defn merge-counts
+  ([] {})
+  ([& m] (apply merge-with + m)))
+ 
+(defn word-frequency [text]
+  (r/fold merge-counts count-words (clojure.string/split text #"\s+")))
+When to use
+Use the reducer form of these operations when:
+Source data can be generated and held in memory
+Work to be performed is computation (not I/O or blocking)
+Number of data items or work to be done is "large"
+------------------------------------------------------------
+Special Forms
+
+(def symbol init?)
+Creates and interns or locates a global var with the name of symbol and a namespace of the value of the current namespace (*ns*). If init is supplied, it is evaluated, and the root binding of the var is set to the resulting value. If init is not supplied, the root binding of the var is unaffected. def always applies to the root binding, even if the var is thread-bound at the point where def is called. def yields the var itself (not its value). Throws an exception if symbol is already in the namespace and not mapped to an interned var. Since 1.3, def has allowed an optional doc-string: (def symbol doc-string? init?).
+
+Any metadata on the symbol will be evaluated, and become metadata on the var itself. There are several metadata keys that have special interpretation:
+:private
+a boolean indicating the access control for the var. If this key is not present, the default access is public (e.g. as if :private false).
+:doc
+a string containing short (1-3 line) documentation for the var contents
+:test
+a fn of no args that uses assert to check various operations. The var itself will be accessible during evaluation of a literal fn in the metadata map.
+:tag
+a symbol naming a class or a Class object that indicates the Java type of the object in the var, or its return value if the object is a fn.
+
+In addition the compiler will place the following keys on the var:
+:file string
+:line int
+:name simple symbol
+:ns namespace in which var is interned
+:macro true if var names a macro
+:arglists a list of vector(s) of argument forms, as were supplied to defn
+
+The var metadata can be used for application-specific purposes as well. Consider using namespace-qualified keys (e.g. :myns/foo) to avoid clashes.
+(defn
+ ^{:doc "mymax [xs+] gets the maximum value in xs using > "
+   :test (fn []
+             (assert (= 42  (mymax 2 42 5 4))))
+   :user/comment "this is the best fn ever!"}
+  mymax
+  ([x] x)
+  ([x y] (if (> x y) x y))
+  ([x y & more]
+   (reduce mymax (mymax x y) more)))
+ 
+user=> (meta #'mymax)
+  {:name mymax,
+   :user/comment "this is the best fn ever!",
+   :doc "mymax [xs+] gets the maximum value in xs using > ",
+   :arglists ([x] [x y] [x y & more])
+   :file "repl-1",
+   :line 126,
+   :ns #<Namespace user >,
+   :test #<user$fn__289 user$fn__289@20f443 >}
+Many macros expand into def (e.g. defn, defmacro), and thus also convey metadata for the resulting var from the symbol used as the name.
+
+Using def to modify the root value of a var at other than the top level is usually an indication that you are using the var as a mutable global, and is considered bad style. Consider either using binding to provide a thread-local value for the var, or putting a ref or agent in the var and using transactions or actions for mutation.
+
+
+(if test then else?)
+Evaluates test. If not the singular values nil or false, evaluates and yields then, otherwise, evaluates and yields else. If else is not supplied it defaults to nil. All of the other conditionals in Clojure are based upon the same logic, that is, nil and false constitute logical falsity, and everything else constitutes logical truth, and those meanings apply throughout. if performs conditional tests of boolean Java method return values without conversion to Boolean. Note that if does not test for arbitrary values of java.lang.Boolean, only the singular value false (Java's Boolean.FALSE), so if you are creating your own boxed Booleans make sure to use Boolean/valueOf and not the Boolean constructors.
+
+
+(do exprs*)
+Evaluates the expressions in order and returns the value of the last. If no expressions are supplied, returns nil.
+
+
+(let [bindings* ] exprs*)
+binding => binding-form init-expr
+
+Evaluates the exprs in a lexical context in which the symbols in the binding-forms are bound to their respective init-exprs or parts therein. The bindings are sequential, so each binding can see the prior bindings. The exprs are contained in an implicit do. If a binding symbol is annotated with a metadata tag, the compiler will try to resolve the tag to a class name and presume that type in subsequent references to the binding. The simplest binding-form is a symbol, which is bound to the entire init-expr:
+(let [x 1
+      y x]
+  y)
+-> 1
+
+See Binding Forms for more information about binding forms.
+
+Locals created with let are not variables. Once created their values never change!
+
+
+(quote form)
+Yields the unevaluated form.
+user=> '(a b c)
+(a b c)
+Note there is no attempt made to call the function a. The return value is a list of 3 symbols.
+
+
+(var symbol)
+The symbol must resolve to a var, and the Var object itself (not its value) is returned. The reader macro #'x expands to (var x).
+
+
+(fn name? [params* ] exprs*)
+(fn name? ([params* ] exprs*)+)
+params => positional-params* , or positional-params* & rest-param
+positional-param => binding-form
+rest-param => binding-form
+name => symbol
+
+Defines a function (fn). Fns are first-class objects that implement the IFn interface. The IFn interface defines an invoke() function that is overloaded with arity ranging from 0-20. A single fn object can implement one or more invoke methods, and thus be overloaded on arity. One and only one overload can itself be variadic, by specifying the ampersand followed by a single rest-param. Such a variadic entry point, when called with arguments that exceed the positional params, will find them in a seq contained in the rest param. If the supplied args do not exceed the positional params, the rest param will be nil.
+
+The first form defines a fn with a single invoke method. The second defines a fn with one or more overloaded invoke methods. The arities of the overloads must be distinct. In either case, the result of the expression is a single fn object.
+
+The exprs are compiled in an environment in which the params are bound to the actual arguments. The exprs are enclosed in an implicit do. If a name symbol is provided, it is bound within the function definition to the function object itself, allowing for self-calling, even in anonymous functions. If a param symbol is annotated with a metadata tag, the compiler will try to resolve the tag to a class name and presume that type in subsequent references to the binding.
+(def mult
+  (fn this
+      ([] 1)
+      ([x] x)
+      ([x y] (* x y))
+      ([x y & more]
+          (apply this (this x y) more))))
+Note that named fns such as mult are normally defined with defn, which expands into something such as the above.
+
+A fn (overload) defines a recursion point at the top of the function, with arity equal to the number of params including the rest param, if present. See recur.
+
+fns implement the Java Callable, Runnable and Comparator interfaces.
+
+Since 1.1
+
+Functions support specifying runtime pre- and postconditions.
+
+The syntax for function definitions becomes the following:
+
+(fn name? [params* ] condition-map? exprs*)
+(fn name? ([params* ] condition-map? exprs*)+)
+
+
+The syntax extension also applies to to defn and other macros which expand to fn forms.
+
+Note: If the sole form following the parameter vector is a map, it is treated as the function body, and not the condition map.
+
+The condition-map parameter may be used to specify pre- and postconditions for a function. It is of the following form:
+
+{:pre [pre-expr*]
+:post [post-expr*]}
+
+where either key is optional. The condition map may also be provided as metadata of the arglist.
+
+pre-expr and post-expr are boolean expressions that may refer to the parameters of the function. In addition, % may be used in a post-expr to refer to the function's return value. If any of the conditions evaluate to false and *assert* is true, an assertion failure exception is thrown.
+
+Example:
+(defn constrained-sqr [x]
+    {:pre  [(pos? x)]
+     :post [(> % 16), (< % 225)]}
+    (* x x))
+
+See Binding Forms for more information about binding forms.
+
+
+(loop [bindings* ] exprs*)
+loop is exactly like let, except that it establishes a recursion point at the top of the loop, with arity equal to the number of bindings. See recur.
+
+
+(recur exprs*)
+Evaluates the exprs in order, then, in parallel, rebinds the bindings of the recursion point to the values of the exprs. If the recursion point was a fn method, then it rebinds the params. If the recursion point was a loop, then it rebinds the loop bindings. Execution then jumps back to the recursion point. The recur expression must match the arity of the recursion point exactly. In particular, if the recursion point was the top of a variadic fn method, there is no gathering of rest args - a single seq (or null) should be passed. recur in other than a tail position is an error.
+
+Note that recur is the only non-stack-consuming looping construct in Clojure. There is no tail-call optimization and the use of self-calls for looping of unknown bounds is discouraged. recur is functional and its use in tail-position is verified by the compiler.
+(def factorial
+  (fn [n]
+    (loop [cnt n acc 1]
+       (if (zero? cnt)
+            acc
+          (recur (dec cnt) (* acc cnt))))))
+
+(throw expr)
+The expr is evaluated and thrown, therefore it should yield an instance of some derivee of Throwable.
+
+
+(try expr* catch-clause* finally-clause?)
+catch-clause -> (catch classname name expr*)
+finally-clause -> (finally expr*)
+
+The exprs are evaluated and, if no exceptions occur, the value of the last is returned. If an exception occurs and catch clauses are provided, each is examined in turn and the first for which the thrown exception is an instance of the named class is considered a matching catch clause. If there is a matching catch clause, its exprs are evaluated in a context in which name is bound to the thrown exception, and the value of the last is the return value of the function. If there is no matching catch clause, the exception propagates out of the function. Before returning, normally or abnormally, any finally exprs will be evaluated for their side effects.
+
+
+(monitor-enter x)
+(monitor-exit x)
+These are synchronization primitives that should be avoided in user code. Use the locking macro.
+
+
+
+Other Special Forms
+The special forms dot ('.'), new, and set! of fields are described in the Java Interop section of the reference.
+set! of vars is described in the Vars section of the reference.
+
+
+Binding Forms (Destructuring)
+Clojure supports abstract structural binding, often called destructuring, in let binding lists, fn parameter lists, and any macro that expands into a let or fn. The basic idea is that a binding-form can be a data structure literal containing symbols that get bound to the respective parts of the init-expr. The binding is abstract in that a vector literal can bind to anything that is sequential, while a map literal can bind to anything that is associative.
+Vector binding destructuring
+
+Vector binding-exprs allow you to bind names to parts of sequential things (not just vectors), like vectors, lists, seqs, strings, arrays, and anything that supports nth. The basic sequential form is a vector of binding-forms, which will be bound to successive elements from the init-expr, looked up via nth. In addition, and optionally, & followed by a binding-forms will cause that binding-form to be bound to the remainder of the sequence, i.e. that part not yet bound, looked up via nthnext .
+
+Finally, also optional, :as followed by a symbol will cause that symbol to be bound to the entire init-expr:
+(let [[a b c & d :as e] [1 2 3 4 5 6 7]]
+  [a b c d e])
+ 
+->[1 2 3 (4 5 6 7) [1 2 3 4 5 6 7]]
+These forms can be nested:
+(let [[[x1 y1][x2 y2]] [[1 2] [3 4]]]
+  [x1 y1 x2 y2])
+ 
+->[1 2 3 4]
+Strings work too:
+(let [[a b & c :as str] "asdjhhfdas"]
+  [a b c str])
+ 
+->[\a \s (\d \j \h \h \f \d \a \s) "asdjhhfdas"]
+Map binding destructuring
+
+Map binding-forms allow you to bind names to parts of associative things (not just maps), like maps, vectors, string and arrays (the latter three have integer keys). It consists of a map of binding-form-key pairs, each symbol being bound to the value in the init-expr at the key. In addition, and optionally, an :as key in the binding form followed by a symbol will cause that symbol to be bound to the entire init-expr. Also optionally, an :or key in the binding form followed by another map may be used to supply default values for some or all of the keys if they are not found in the init-expr:
+(let [{a :a, b :b, c :c, :as m :or {a 2 b 3}}  {:a 5 :c 6}]
+  [a b c m])
+ 
+->[5 3 6 {:c 6, :a 5}]
+It is often the case that you will want to bind same-named symbols to the map keys. The :keys directive allows you to avoid the redundancy:
+(let [{fred :fred ethel :ethel lucy :lucy} m] ...
+can be written:
+(let [{:keys [fred ethel lucy]} m] ...
+As of Clojure 1.6, you can also use prefixed map keys in the map destructuring form:
+(let [m {:x/a 1, :y/b 2}
+      {:keys [x/a y/b]} m]
+  (+ a b))
+ 
+-> 3
+As shown above, in the case of using prefixed keys, the bound symbol name will be the same as the right-hand side of the prefixed key. You can also use auto-resolved keyword forms in the :keys directive:
+(let [m {::x 42}
+      {:keys [::x]} m]
+  x)
+ 
+-> 42
+There are similar :strs and :syms directives for matching string and symbol keys, the latter also allowing prefixed symbol keys since Clojure 1.6.
+Nested destructuring
+
+Since binding forms can be nested within one another arbitrarily, you can pull apart just about anything:
+(let [{j :j, k :k, i :i, [r s & t :as v] :ivec, :or {i 12 j 13}}
+      {:j 15 :k 16 :ivec [22 23 24 25]}]
+  [i j k r s t v])
+ 
+-> [12 15 16 22 23 (24 25) [22 23 24 25]]
+------------------------------------------------------------
+Transient Data Structures
+
+Rationale
+
+If a tree falls in the woods, does it make a sound?
+If a pure function mutates some local data in order to produce an immutable return value, is that ok?
+
+It's an interesting question. Clojure data structures use mutation every time you call, e.g. assoc, creating one or more arrays and mutating them, before returning them for immutable use thereafter. The reason is performance - you simply can't get as fast using only pure functions and immutable data. Once constructed and shared however, being immutable and persistent is essential to robust programs. The things Clojure mutates internally are small, newly allocated arrays that constitute the internal nodes of its data structures. No one ever sees the arrays.
+
+You run into a similar scenario, at a higher level, when you want to initialize or transform a large persistent data structure using multiple steps, none of which will be seen by any code other than the constructing/transforming code. The challenge here is that the source of a transformation will be an existing persistent data structure, and the result of the function will be shared. Copying into a traditional mutable data structure and back involves O(n) copying, and the internal code is an imperative mess quite unlike the rest of your Clojure code. Furthermore, there are no guards against accidentally sharing or aliasing the mutable data structure, especially if you need to call helper functions to do the work. In short, it would be a shame if you had to leave Clojure's model in order to speed up a piece of code like this. Transient data structures are a solution to this optimization problem that integrates with the Clojure model and provides the same thread safety guarantees you expect of Clojure.
+
+How they work
+
+Transient data structures are always created from an existing persistent Clojure data structure. As of Clojure 1.1.0, vectors, hash-maps, and hash-sets are supported. Note that not all Clojure data structures can support this feature, but most will. Lists will not, as there is no benefit to be had.
+
+You obtain a transient 'copy' of a data structure by calling transient. This creates a new transient data structure that is a copy of the source, and has the same performance characteristics. In fact, it mostly is the source data structure, and highlights the first feature of transients - creating one is O(1). It shares structure with its source, just as persistent copies share structure.
+
+The second feature of transients is that creating one does not modify the source, and the source cannot be modified via use of the transient. Your source data is immutable and persistent as always.
+
+Transients support the read-only interface of the source, i.e. you can call nth, get, count and fn-call a transient vector, just like a persistent vector.
+
+Transients do not support the persistent interface of the source data structure. assoc, conj etc will all throw exceptions, because transients are not persistent. Thus you cannot accidentally leak a transient into a context requiring a persistent.
+
+Transients support a parallel set of 'changing' operations, with similar names followed by ! - assoc!, conj! etc. These do the same things as their persistent counterparts except the return values are themselves transient. Note in particular that transients are not designed to be bashed in-place. You must capture and use the return value in the next call. In this way, they support the same code structure as the functional persistent code they replace. As the example will show, this will allow you to easily enhance the performance of a piece of code without structural change.
+
+When you are finished building up your results, you can create a persistent data structure by calling persistent! on the transient. This operation is also O(1). Subsequent to calling persistent!, the transient should not be used, and all operations will throw exceptions. This will be true also for any aliases you might have created.
+
+Example
+
+Here's a very typical example, some code that builds up a vector for return, all 'changes' being local to the function. Note how the transient-using version has exactly the same structure, just:
+Calling transient on the source vector
+Using conj! instead of conj
+Calling persistent! on return
+(defn vrange [n]
+  (loop [i 0 v []]
+    (if (< i n)
+      (recur (inc i) (conj v i))
+      v)))
+ 
+(defn vrange2 [n]
+  (loop [i 0 v (transient [])]
+    (if (< i n)
+      (recur (inc i) (conj! v i))
+      (persistent! v))))
+ 
+(time (def v (vrange 1000000)))
+"Elapsed time: 297.444 msecs"
+ 
+(time (def v2 (vrange2 1000000)))
+"Elapsed time: 34.428 msecs"
+Oh, yeah, transients are fast!
+
+Concurrent use
+
+That's all there is to using transients, but they have another important property: Transients enforce thread isolation. Because each result of a transient operation shares (mutable) structure with the previous, it would be very dangerous if more than one thread were to manipulate a transient at once. In order to prevent this, transients will detect any (read or write) use from a thread other than the one that created them and throw an exception.
+
+This may not sound like a concurrency story, but single-thread isolation is actually a very useful concurrency semantic. The whole point of using transients is that doing so is safe, because their use is an isolated implementation detail of otherwise functional code. Having that be enforced means that some things that would normally be very hard to make safe with ordinary mutable data structures become easy:
+
+Composite operations are ok, and require no locks
+contrast with java.util.Vector, where each operation is synchronized, but that doesn't buy you much
+Multi-collection operations are ok, and require no locks
+contrast with any other j.u.Collection where locking is up to you
+Aliasing or leakage will be caught
+Summary
+
+Transients provide a high-performance optimization of functional data-structure-building code that works with Clojure's data structures and provides critical safety guarantees.
+
+Single-path use
+Thread isolation - enforced
+O(1) creation from persistent data structures
+Shares structure with persistent source
+O(1) creation of persistent data structure when editing session finished
+Same code structure as functional version
+Capture return value, use for next call
+Don't bash in place
+Not persistent, so you can't hang onto interim values or alias
+Can't use after returning a persistent version
+Fast
+
+Transient persistent vectors, hash-maps, and hash-sets are available as of Clojure 1.1.0. Please try them out and give feedback on the Google Group.
+
+Thanks,
+
+Rich
+------------------------------------------------------------
+Transducers
+
+Transducers are composable algorithmic transformations. They are independent from the context of their input and output sources and specify only the essence of the transformation in terms of an individual element. Because transducers are decoupled from input or output sources, they can be used in many different processes - collections, streams, channels, observables, etc. Transducers compose directly, without awareness of input or creation of intermediate aggregates.
+
+Also see the introductory blog post and this video.
+
+Terminology
+
+A reducing function is the kind of function you'd pass to reduce - it is a function that takes an accumulated result and a new input and returns a new accumulated result:
+;; reducing function signature
+whatever, input -> whatever
+A transducer (sometimes referred to as xform or xf) is a transformation from one reducing function to another:
+;; transducer signature
+(whatever, input -> whatever) -> (whatever, input -> whatever)
+Defining Transformations With Transducers
+
+Most sequence functions included in Clojure have an arity that produces a transducer. This arity omits the input collection; the inputs will be supplied by the process applying the transducer. Note: this reduced arity is not currying or partial application.
+
+For example:
+(map inc)     ;; returns a mapping transducer for incrementing
+(filter odd?) ;; returns a transducer that filters odd
+(take 5)      ;; returns a transducer that will take the first 5 values
+Transducers compose with ordinary function composition. A transducer performs its operation before deciding whether and how many times to call the transducer it wraps. The recommended way to compose transducers is with the existing comp function:
+(def xf (comp (filter odd?) (map inc)))
+The transducer xf is a transformation stack that will be applied by a process to a series of input elements. Each function in the stack is performed before the operation it wraps. Composition of the transformer runs right-to-left but builds a transformation stack that runs left-to-right (filtering happens before mapping in this example). As a mnemonic, remember that comp of transducer functions is applied in the same order as ->> with sequence functions.
+
+The following functions produce a transducer when the input collection is omitted:
+map cat mapcat filter remove take take-while take-nth drop drop-while replace partition-by partition-all keep keep-indexed dedupe random-sample
+
+Using Transducers
+
+Transducers can be used in many contexts (see below for how to create new ones).
+
+transduce
+One of the most common ways to apply transducers is with the transduce function, which is analogous to the standard reduce function:
+(transduce xform f coll)
+(transduce xform f init coll)
+transduce will immediately (not lazily) reduce over coll with the transducer xform applied to the reducing function f, using init as the initial value if supplied or (f) otherwise. f supplies the knowledge of how to accumulate the result, which occurs in the (potentially stateful) context of the reduce.
+(def xf (comp (filter odd?) (map inc)))
+(transduce xf + (range 5))
+;; => 6
+(transduce xf + 100 (range 5))
+;; => 106
+The composed xf transducer will be invoked left-to-right with a final call to the reducing function f. In the last example, input values will be filtered, then incremented, and finally summed.
+xf.png
+eduction
+To capture the process of applying a transducer to a coll, use the eduction function. It takes an xform and coll and returns a reducible/iterable/seqable application of the transducer to the items in coll. These applications will be performed each time reduce/iterator/seq is called.
+(def iter (eduction xf (range 5)))
+(reduce + iter)
+;; => 6
+into
+To apply a transducer to an input collection and construct a new output collection, use into (which efficiently uses reduce and transients if possible):
+(into [] xf (range 1000))
+sequence
+To create a sequence from the application of a transducer to an input collection, use sequence:
+(sequence xf (range 1000))
+The resulting sequence elements are incrementally computed. These sequences will consume input incrementally as needed and fully realize intermediate operations. This behavior differs from the equivalent operations on lazy sequences.
+
+Creating Transducers
+
+Most functions that produce transducers have the following shape (custom code in "..."):
+(fn [xf]
+  (fn ([] ...)
+      ([result] ...)
+      ([result input] ...)))
+Many of the core sequence functions (like map, filter, etc) take operation-specific arguments (a predicate, function, count, etc) and return a transducer of this shape closing over those arguments. In some cases, like cat, the core function is a transducer function and does not take an xf.
+
+The inner function is defined with 3 arities used for different purposes:
+Init (arity 0) - should call the init arity on the nested transform xf, which will eventually call out to the transducing process.
+Step (arity 2) - this is a standard reduction function but it is expected to call the xf step arity 0 or more times as appropriate in the transducer. For example, filter will choose (based on the predicate) whether to call xf or not. map will always call it exactly once. cat may call it many times depending on the inputs.
+Completion (arity 1) - some processes will not end, but for those that do (like transduce), the completion arity is used to produce a final value and/or flush state. This arity must call the xf completion arity exactly once.
+
+An example use of completion is partition-all, which must flush any remaining elements at the end of the input. The completing function can be used to convert a reducing function to a transducing function by adding a default completion arity.
+
+Early termination
+
+Clojure has a mechanism for specifying early termination of a reduce:
+reduced - takes a value and returns a reduced value indicating reduction should stop
+reduced? - returns true if the value was created with reduced
+deref or @ can be used to retrieve the value inside a reduced
+
+A process that uses transducers must check for and stop when the step function returns a reduced value (more on that in Creating Transducible Processes). Additionally, a transducer step function that uses a nested reduce must check for and convey reduced values when they are encountered. (See the implementation of cat for an example.)
+
+Transducers with reduction state
+
+Some transducers (such as take, partition, etc) require state during the reduction process. This state is created each time the transducible process applies the transducer. For example, consider the dedupe transducer that collapses a series of duplicate values into a single value. This transducer must remember the previous value to determine whether the current value should be passed on:
+(defn dedupe []
+  (fn [xf]
+    (let [prev (volatile! ::none)]
+      (fn
+        ([] (xf))
+        ([result] (xf result))
+        ([result input]
+          (let [prior @prev]
+            (vreset! prev input)
+              (if (= prior input)
+                result
+                (xf result input))))))))
+In dedupe, prev is a stateful container that stores the previous value during the reduction. The prev value is a volatile for performance, but it could also be an atom. The prev value will not be initialized until the transducing process starts (in a call to transduce for example). The stateful interactions are therefore contained within the context of the transducible process.
+
+In the completion step, a transducer with reduction state should flush state prior to calling the nested transformer's completion function, unless it has previously seen a reduced value from the nested step in which case pending state should be discarded.
+
+Creating Transducible Processes
+
+Transducers are designed to be used in many kinds of processes. A transducible process is defined as a succession of steps where each step ingests an input. The source of the inputs is specific to each process (from a collection, an iterator, a stream, etc). Similarly, the process must choose what to do with the outputs produced by each step.
+
+If you have a new context for applying transducers, there are a few general rules to be aware of:
+
+If a step function returns a reduced value, the transducible process must not supply any more inputs to the step function. The reduced value must be unwrapped with deref before completion.
+A completing process must call the completion operation on the final accumulated value exactly once.
+A transducing process must encapsulate references to the function returned by invoking a transducer - these may be stateful and unsafe for use across threads.

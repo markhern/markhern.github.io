@@ -1,0 +1,21 @@
+What are directives
+Ans: At a high level, directives are markers on a DOM element (such as an attribute, element name, comment or CSS class) that tell AngularJS's HTML compiler ($compile) to attach a specified behavior to that DOM element.
+
+What are some directives that are built in?
+Angular comes with a set of these directives built-in, like ngBind, ngModel, and ngClass. Much like you create controllers and services, you can create your own directives for Angular to use. When Angular bootstraps your application, the HTML compiler traverses the DOM matching directives against the DOM elements.
+
+Explain ng-model directive.
+ng-model directive binds the values of AngularJS application data to HTML input controls. It creates a model variable which can be used with the html page and within the container control( for example, div) having ng-app directive.
+
+Explain ng-controller directive.
+ng-controller directive tells AngularJS what controller to use with this view. AngularJS application mainly relies on controllers to control the flow of data in the application. A controller is a JavaScript object containing attributes/properties and functions. Each controller accepts $scope as a parameter which refers to the application/module that controller is to control.
+
+Explain ng-repeat directive.
+ng-repeat directive repeats html elements for each item in a collection.
+
+Explain ng-click directive.
+In below example, we've added ng-click attribute to a HTML button and added an expression to updated a model. Then we can see the variation.
+
+	<p>Total click: {{ clickCounter }}</p></td>
+	<button ng-click = "clickCounter = clickCounter + 1">Click Me!</button>
+

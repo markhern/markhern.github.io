@@ -1,0 +1,210 @@
+ARACHNE kickstarter verbiage
+
+Close your eyes. Imagine that next web application that you haven’t got around to writing yet. Maybe it’s a hobby or community site. Maybe it’s the side project you’ve been daydreaming about. Maybe it’s that new big data visualization tool for work, or the next version of your enterprise portal.
+
+Next, imagine that it’s written in a language you love: Clojure.
+
+Finally, imagine if it took you precisely five minutes to get all the common project initialization stuff out of the way, and you could start working on the important stuff this afternoon. The stuff that makes your app yours.
+
+This summer, you won’t have to use your imagination any more.
+
+Arachne is a capable, extensible web framework for the JVM that makes it fast and simple to get started writing web applications that can start small and scale all the way to the top.
+
+In ancient Greek mythology, Arachne was a weaver. She was so skilled that the beauty of her work rivalled that of Athena, the goddess of art and wisdom, who became jealous and turned her into a spider.
+
+Arachne (pronounced uh-RACK-nee) is a tool to help you weave beautiful web apps, to bring individual strands together into a connected, cooperative, beautiful whole.
+
+Help bring rapid, iterative web development to Clojure and the JVM. Start solving your problems. Pool your resources with other developers and stop writing the same code over and over.
+Background & Rationale
+
+Clojure is great. With its focus on simplicity, careful design and raw programming power, Clojure has empowered and inspired tens of thousands of developers.
+
+Sadly, the current state of the art for Clojure web development does not match the potential of the language. Aspiring web developers must weave their applications together from myriads of small libraries. While the situation has improved in recent years as projects have appeared that package common sets of libraries, the Clojure world still lacks the speed, ease and flexibility of Ruby on Rails, Python’s Django, or Elixir’s Phoenix.
+
+To fix this, we need some new things. For beginners, a smooth path. For everyone, basic prototype development measured in minutes, not in weeks. And the ability to scale those prototypes directly into large-scale, enterprise-worthy workhorse systems.
+
+A Path for Beginners
+
+Clojure is wonderful, but building a Clojure application from scratch is not for the faint of heart. There’s a large barrier to entry for those new to the language. To assemble a new Clojure web application, you to need to carefully weigh a wide array of options. Do I use Ring or Pedestal? Enlive or Hiccup? Honey, Korma, Yesql, Hyperion? What about core.async? Or Aleph? Or Biidi or Clout or Compojure or Mustache?
+
+This kind of choice is great when you need it, but it is a lot to ask from someone who hasn’t done it before. It’s unnecessary: those who have done it before know that there are good combinations that work for most web applications. By providing a thoroughly-vetted, well-travelled path, we can empower beginners from the very start and give them a safe, comfortable environment in which to grow their skills. All while being productive in the real world.
+
+Long term, if we are successful, Arachne will both broaden and deepen the community. As a language and as an ecosystem, it will help propel Clojure “across the chasm” from a tool popular among the early adopters to a first class choice for mainstream developers.
+
+Rapid Development
+
+Even for experts who already know exactly what to do, building a full system is complex and labor-intensive. If you build a Clojure web app, today, you will have to select, assemble and test solutions for a myriad of “solved” problems: routing, authentication, internationalization, and content negotiation. You’ll need to set up how you talk to your database, how to convert your data into HTML, and how validate your inputs. You’ll need caching, metrics and logging.
+
+By the time you’re done with all this (if you even bother, instead of deferring these critical components indefinitely) you’re likely to be weeks or months into a project, cutting into time that ought to have gone into building and iterating on actual project features.
+
+Imagine if you could generate a working project, with all the essential parts, in minutes. Imagine having your application deployed and running in under an hour. Imagine getting down to real work that first day. Of course you may eventually need to swap out some of the default parts for something more sophisticated. But you can have something to put online and show for your efforts on day one, not week five.
+
+This is the web development experience on many other platforms. Why should Clojure developers settle for less?
+
+Smooth scaling
+
+Usually, rapid development is associated with the classic framework trade-off: some platforms let you assemble simple websites very quickly, but have limitations. Most easy-to-use platforms are only easy-to-use as long as you stay within the bounds envisioned by its authors. Step over the line and suddenly that convenient friend is your implacable enemy, thwarting you at every turn. Conversely, some platforms (including what is currently on-offer for Clojure) promise flexibility, scale, and good complexity management in huge applications. But, along with being flexible, scalable, and powerful, these platforms tend to be unwieldy and decidedly un-agile. Especially in the beginning. Does it have to be this way?
+
+Arachne will test the hypothesis that it is possible to have a system that lets you start fast, but doesn’t hold you back when you go big. We aim for a “getting started” experience comparable to Rails, along with a smooth transition into a large, mature Clojure system. There is no silver bullet that will take the work out of building complex systems. But, if we can avoid the costs incurred by re-architecting due to platform changes as a project grows, we can allow companies to iteratively expand their prototypes into production systems, You can stay agile, be productive, and keep your eyes fixed on your business goals.
+
+We’ll do this by deliberately designing the system to get out of your way when you don’t need it or want it. When you’re ready to “go custom,” Arachne won’t stop you. Any code you can plug into any other Clojure application you can put in an Arachne application as well, and you can use Arachne’s high-level features as much or as little as you like to help keep things organized.
+Project Philosophy
+
+We aim to take a measured, consistent approach to how we develop the core of Arachne. We want everything we do to align with a specific set of guiding principles.
+
+People before Software
+
+Solid algorithms and rigorous design are important, but it is more important to focus squarely on just what software is: something by people, for people. Arachne is a tool used by humans to write web applications for other humans. Usability is important, beginning to end.
+
+This means that the developer experience should be welcoming, smooth and pleasant. It means that the artifacts produced by Arachne should be attractive, conceptually and visually. Good design should be the default. It means that UI design and the user experience are exactly as important as the backend code. And it means that the documentation should be complete and usable.
+
+Both Ease and Simplicity
+
+One of Rich Hickey’s most important contributions to software development has been his breakdown of the concepts of simplicity and complexity, contrasting them with the concept of ease (see Simple made Easy). It is important to reduce a problem into its unitary, fundamental concepts and tease apart any inadvertent blending of concerns.
+
+Ease, in this terminology, is a separate idea related to the effort involved in completing a task. It is a metric of how “near at hand” something is, in terms of familiarity and difficulty.
+
+If simplicity is the foundation of a house, ease is the floor plan, utilities and furnishing that make it habitable. Simplicity and ease are both important, complementary priorities. A house needs to not fall down around you, but it also needs to be a pleasant and convenient or no one will want to live there. Simplicity and ease must both be accounted for, from the beginning.
+
+Pragmatism
+
+Sometimes, worse is better. It’s better for something to be imperfect, but to exist and be useful, than to be only a pristine dream.
+
+Wild, boundary-pushing new technologies and techniques are wonderful. We hope to provide a stable platform on which lots of smart people can implement lots of crazy brilliant ideas. But to provide that stable platform, the core of Arachne will be constructed from predictable, known quantities.
+
+The Clojure world is full of wheels and Arachne will use the existing wheels wherever possible. We will not re-invent unless forced to do so. If we can build a tiny shim to an existing library to deliver it as an Arachne module, we will always prefer that instead of building our own.
+
+Many aspects of web development are already, to a greater or lesser extent, “solved” problems. Arachne aims to first provide a set of reasonable, unsurprising defaults. But we will also make each element replaceable by something more sophisticated as users feel the need to do so.
+Technology
+
+Arachne’s driving technical goal is extreme modularity. Every major feature will be a separate module that can be swapped out for alternative implementations, or improved and modified independently. This enables two key goals toward shaping the Arachne ecosystem:
+
+    Module authors can participate independently and democratically in the Arachne community by publishing useful modules themselves. No commit rights or even pull requests to Arachne core are required and the contributed modules can have the same power and usability as the modules that come packaged with Arachne.
+     Users can select and drop in different approaches (e.g, SQL vs Datomic data stores, or Hiccup vs. Enlive templating) without extensive modifications to their code.
+
+Arachne will ship with a basic set of recommended initial modules suitable for building web applications: a Pedestal-based HTTP server, HTTP routing, HTML generation, asset management, authn/authz, basic Datomic and JDBC data layers, tools for building microservices, and infrastructure for basic single-page applications. See the Roadmap section below for a more complete list of what is planned.
+
+There is no reason why any of these components cannot be replaced; in time we expect that the community will produce a dazzling array of modules for varying tools and development styles. Arachne will provide something basic and usable, and developers can build from there without being held back.
+
+Core & Configuration
+
+The core of Arachne is quite small. It contains only the configuration systems, dependency injection system (based on Stuart Sierra’s Component library) and module systems that are necessary to bootstrap the loading of additional modules.
+
+An Arachne application is defined as pure data, storing its configuration in a highly structured, schema’d, queryable database. The configuration isn’t just a list of ports and URIs, nor is it code. Instead, it is a full data description of everything about the system that can possibly be encoded as data. This includes system component definitions, routing tables, database migrations, and much more.
+
+This also means that the complete definition of any Arachne application is both reproducible and inspectable. We will provide graphical tools to map and visualize the exact structure of Arachne applications at runtime, giving unparalleled levels of transparency and introspection to running apps.
+
+Modules
+
+Modules are lightweight wrappers around normal Clojure code or existing Clojure libraries (remember, we don’t want to reinvent the wheel!). A module’s main job is to translate Arachne’s configuration data into whatever a library needs.
+
+Modules can depend on or extend other modules, and do so in well defined ways by extending the config schema. By querying the configuration for specific situations and adding custom attributes as needed, modules can add cross-cutting behaviors with a low degree of coupling.
+
+Developer Interface
+
+User-facing modules also expose a friendly, usable DSL interface to the configuration database. In fact, only advanced users (those who want to write modules, or do “meta-level” programming) need to know what the underlying config actually looks like. Everyone else can write straightforward code that best matches the problem domain.
+
+This gives the best of both worlds; the configuration is rich, well-structured data for programmatic interaction, but for routine webapp development, users will interact with APIs designed for uncompromising ease and agility.
+Team & Community
+
+Open Source
+
+Arachne will proceed as a community-driven open source project, licensed under the terms of the Apache Software License 2.0. All development will take place on publicly visible git repositories. We will maintain technical rigor and be judicious about changes accepted into the project core, and will actively foster community involvement and accept contributions via Github pull requests.
+
+We will be deliberate and conscious about diversity, inclusiveness and mutual respect, and will adopt and adhere to the terms of the Contributor Covenant v1.4.0.
+
+As much as we possibly can, we will strive to enable those members of our community with less experience to be productive with our platform, and by education, example and encouragement bring them to a point where they too can make meaningful contributions.
+
+Maintainer
+
+Initially, the lead developer and maintainer for Arachne will be me, Luke VanderHart. I am an experienced Clojurist, having used Clojure for personal projects since 2008 and consulted on large-scale Clojure projects nearly full time since 2010. With Stuart Sierra, I am the author of Practical Clojure (Apress 2010) and ClojureScript: Up and Running (O’Reilly 2014), as well as the Clojure Cookbook (O’Reilly 2012) with Ryan Neufeld. I have conducted Clojure trainings and spoke on Clojure and ClojureScript topics at several conferences, including Clojure Conj, Clojure West, Euroclojure, Fluent, CUFP and ClojuTRE.
+
+I currently work for Cognitect and am based in Durham, North Carolina.
+
+Steering Group
+
+I have no desire to unilaterally set the direction for Arachne, or to be a project dictator, benevolent or otherwise. I also greatly value the input of developers and architects with more experience or different perspectives. As such, we have put together a group of experts to inform the goals and priorities of the project at a high level, and to apply continuous corrective feedback throughout the development process.
+
+Once the Kickstarter is underway, the members of this steering group have agreed to meet bi-weekly to discuss and review progress, call out danger areas, and review priorities. The minutes of these meetings will be made public.
+
+Initial members of this steering group are:
+
+    Tim Ewald 
+    Jamie Kite 
+    David Nolen
+    Mike Nygard
+    Russ Olsen
+    Nola Stowe
+    Stuart Sierra
+
+Note that although members of the steering group have graciously agreed to help with project guidance, membership in this group should not be construed to imply personal endorsement of every aspect of the Arachne project.
+Project Logistics
+
+Why Kickstarter?
+
+Arachne itself is the distillation of my experiences and observations while building web applications in Clojure and other languages over the past decade. I have worked on it as a side project over the last six months, building and throwing away multiple incarnations until I came up with a design that I strongly believe is viable.
+
+It has become apparent that the project cannot grow into its full potential given my other commitments. It will need full time dedication to reach a tipping point where it is useful and people can start adopting it.
+
+This campaign will enable me to support myself and my family while I suspend my full time job as a consultant and focus on Arachne exclusively. The base funding level is budgeted to allow me to dedicate at least three months of full-time work to the project, which will be enough to build a solid first release that will be immediately useful to the Clojure community.
+
+Additional funding beyond the base goal will directly extend the period of time I can dedicate to it, allowing me to deliver additional modules as well as spend more time on polish, mentorship and community building.
+
+Roadmap & Goals
+
+A preliminary note: these goals should not be seen as limitations. If I fail to hit a funding level, it is likely that modules for these additional systems will be created, by me or by someone else, eventually. Making them part of this Kickstarter is a way to ensure that they are delivered according to a fixed timeline, and have adequate time dedicated to them to make them the best they can possibly be.
+
+Base Goal: Core System ($35,000)
+
+At this level, I should be able to work full time for three months and deliver fully documented, usable alpha versions of the following modules:
+
+    Arachne Core 
+    HTTP server 
+    Routing and resource-based API definitions
+     Asset pipelining 
+    HTML generation 
+    Authentication
+     Datomic and JDBC data interfaces 
+    Admin console with visibility into app structure and data
+
+This represents the “minimum viable product” for Arachne; it is the smallest thing that satisfies the stated rationale of the project and is generally useful.
+
+Stretch Goal: Polish and Deployment ($47,000)
+
+Given this funding level, I will have an additional month of full-time work to add features and take the core modules to the next level of polish and power, with an array of useful features that not all projects will need, and that therefore are not a part of the base goal.
+
+In this time frame, we will also add a module for a simple one-button deployment mechanism, so you can see your site online, running in a default configuration on some cloud hosting service, with virtually no additional effort.
+
+Stretch Goal: Single Page Applications ($60,000)
+
+Given this funding level, I can focus and dedicate another month towards building modules that will provide first class support for React-driven client-server applications powered by Arachne. Of course it will already possible to use React on the client side of any Arachne project, but this goal will enable me to spend time specifically on an integrated solution for rapid development of SPAs. It will cover the entire lifecycle of data, from the user interface to back-end storage.
+
+Stretch Goal: Microservices ($72,000)
+
+Given this funding level, we will focus on modules specifically dedicated to building microservice-oriented architectures in distributed environments. We will design and implement tools for defining services quickly and coordinating between them in a variety of real-world operational settings.
+
+Stretch Goal: Enterprise Features ($85,000)
+
+Given this funding level, I can focus and dedicate a seventh month to building modules that high traffic or enterprise users will find beneficial. More market research is required to determine exactly what these are, but it is likely to include modules for features such as:
+
+    Distributed metrics
+     Distributed logging 
+    Corporate single-sign-on
+
+Stretch Goal: Above and Beyond ($100,000+)
+
+I haven’t charted a firm roadmap at this point yet, nor would I wish to do so without more experience building Arachne, engagement with early users, and direction from the steering group. But in the event that this campaign could possibly raise this much money, I would use it to fund my full-time effort solidifying and hardening the product, creating additional world-class documentation, and exploring new ways of building systems on top of the foundation that Arachne provides.
+Risks and challenges
+
+The possible challenges for Arachne, given a successful Kickstarter campaign, largely fall into two categories.
+
+1. Our estimations might be wrong, and I will be unable to deliver a useful framework in the budgeted time.
+2. We will complete our objectives, but Arachne will fail to gain mindshare substantially greater than any of the other attempts at building a Clojure framework.
+
+Risk #1 is certainly real. Software estimation is difficult and fraught with peril. However, it is mitigated by the fact that success or failure in this dimension is not a boolean proposition. Even if we fail to deliver as much as we hope, dedicated time on the project cannot help but yield a solid foundation. No matter how much or how little we get done in the funded period, the project will transition into a more traditional open-source development model for future expansion and enhancement.
+
+Risk #2 is what we're going to focus all our effort on avoiding. Ensuring a viable, useful, popular product is the primary focus of the steering group. Additionally, we will be soliciting continuous feedback from the community to build engagement and steer design.
+
+Our hope is that serious, dedicated development effort to kick off the product will help us gain critical mass quickly, and that the module system will both foster community involvement and make Arachne suitable, out of the box, for a wide variety of environments and project types.
+
+These are two characteristics that have been (for the most part) lacking in previous attempts at a Clojure web framework, and by addressing these issues head-on through a Kickstarter campaign and an explicit focus on modularity, we can achieve a different, more successful outcome.

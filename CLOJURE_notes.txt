@@ -1,0 +1,535 @@
+CLOJURE snippets & notes..................
+---------- why does the 1st snippet return string: "scoderujolcolleh"
+(def concat-and-reverse (comp (partial apply str) reverse str)) 
+
+(defn hello-world []
+(println (concat-and-reverse "hello" "clojuredocs" )))
+
+(hello-world)
+
+--- BUT, below returns incorrect string: ")"scoderujolc" "olleh"("
+(defn hello-world [& tt]
+(println ((comp (partial apply str) reverse str) tt )))
+
+(hello-world "hello" "clojuredocs")
+
+----------
+(ns myfirstprj.core
+		(:require [clojure.set :as s])
+		(:use [clojure.java.io :only (delete-file)]))
+
+(defn do-union [& sets]
+  (apply s/union sets))
+
+(if (even? 5) 
+  (do (println "even")
+  true) ;we can put our own statements TRUE & FALSE as we wish (or symbols, too)
+  (do (println " 5 is odd")
+    false))
+  
+(def a-range (range 0 10))
+(def b-range (filter #(< % 6) (map #(* % 0.25) a-range))) ;awesome, works! - uses 2 anon Fn's
+(doseq [x b-range] ;b-range needs no parens while the range operator would
+        (println x)) ;doseq is similar to Java's foreach operator
+
+(ns myproject.core)
+(defn foo
+  "I don't do a whole lot."
+  [x]
+  (println x "Hello, World!"))
+(defn average
+  [numbers]
+  (/ (apply + numbers) (count numbers)))
+(defn znow []
+  (java.util.Date.))
+(defn foo-cond [ x ] "a great func for fun"
+  (cond 
+    (> x 8) "x greater than 8"
+    (> x 3) "x greater than 3"
+    :other "x is the ELSE condition"))
+
+(condp some [1 2 3 4]
+  #{0 6 7} :>> inc
+  #{4 5 9} :>> dec
+  #{1 2 3} :>> #(+ % 3))
+
+
+(defn show-evens [coll]
+	(if-let [evens (seq (filter even? coll))] ;need SEQ since empty list evals to TRUE & evens would bind to empty list
+		(println (str "The evens are: " evens)) ;con't: also, filter returns a LAZYSEQ!!
+		(println "There are no evens.")))
+
+------------------------------------------------------------------------------------------------
+(defmulti my-print class :default :everything-else)
+(defmethod my-print String [s]
+(.write *out* s))
+(defmethod my-print :everything-else [_]
+(.write *out* "Not implemented yet..."))
+
+(defn the-past-midnight-2 []  ;SEEMS TO IMPROVE ON CLOJURE IN ACTION ex p.112
+  (doto (Calendar/getInstance)
+    (.set Calendar/AM_PM Calendar/AM)
+    (.set Calendar/HOUR 0)
+    (.set Calendar/MINUTE 0)
+    (.set Calendar/SECOND 0)
+    (.set Calendar/MILLISECOND 0)
+    (.getTime ))) 
+
+----- Using doto when using SWING in Clojure (vs. without):
+(import '(javax.swing JFrame JPanel JButton) ) 
+(def button (JButton. "Click Me!"))
+(def panel (JPanel.))
+(def frame (JFrame. "Hello Frame"))
+(. frame setSize 200 200)    ; USING THE DOT MACRO AT LEAST
+(. frame setVisible true)
+(. frame setContentPane panel)
+(. panel add button)
+(. button revalidate )
+--------------- Now, using DOTO macro below
+(import '(javax.swing JFrame JPanel JButton) )
+(def button (JButton. "Click Me!"))
+(def panel (doto (JPanel.)
+             (.add button)))
+(def frame (doto (JFrame. "Hello Frame")
+             (.setSize 200 200)
+             (.setContentPane panel)
+             (.setVisible true)))
+
+
+(defn counter-app [] ;http://stuartsierra.com/2010/01/03/doto-swing-with-clojure
+  (let [counter (atom 0)
+        label (JLabel. "Counter: 0")
+        button (doto (JButton. "Add 1")
+                 (on-action evnt  ;; evnt is not used
+                   (.setText label
+                      (str "Counter: " (swap! counter inc)))))
+        panel (doto (JPanel.)
+                (.setOpaque true)
+                (.add label)
+                (.add button))]
+    (doto (JFrame. "Counter App")
+      (.setContentPane panel)
+      (.setSize 300 100)
+      (.setVisible true))))
+------------------------------------------------------------------------------------------------------
+NOTES:
+Variadic functions use '&' before the list argument and use it as a sequence. 'apply' is different in that it runs a function
+while having an unpacking effect on the final sequence.  ("apply the function to the sequence as if it were the args")
+
+A closure seems to require a anon Fn? It works by closing over the scope of the letted var but keeps it in scope!
+
+Open parens suggests a function, they don't perform a grouping function like a brace.
+
+Side-effecting functions, however, are not *referentially transparent* and so are generally not safe to memoize.
+
+(def orders
+  [{:product "Clock", :customer "Wile Coyote", :qty 6, :total 300}
+   {:product "Dynamite", :customer "Wile Coyote", :qty 20, :total 5000}
+   {:product "Shotgun", :customer "Elmer Fudd", :qty 2, :total 800}
+   {:product "Shells", :customer "Elmer Fudd", :qty 4, :total 100}
+   {:product "Hole", :customer "Wile Coyote", :qty 1, :total 1000}
+   {:product "Anvil", :customer "Elmer Fudd", :qty 2, :total 300}
+   {:product "Anvil", :customer "Wile Coyote", :qty 6, :total 900}])
+
+(defn reduce-by ;found in Prog Clojure 2E
+  [key-fn f init coll]
+  (reduce (fn [summaries x]
+            (let [k (key-fn x)]
+              (assoc summaries k (f (summaries k init) x))))
+          {} coll))
+(reduce-by :customer #(+ %1 (:total %2)) 0 orders) ;use this fn
+;= {"Elmer Fudd" 1200, "Wile Coyote" 7200}
+
+Dynamic vars intended to be rebound with binding should be surrounded with asterisks — like *this*—also known as “earmuffs.”
+
+However, if you define a var to be dynamic (using ^:dynamic metadata),25 then the root binding can be overridden and shadowed on a per-thread basis using the binding form.
+
+Concurrency Notes (from the Concurrency part1 vid series):
+VARs are bound per-thread. The 'def' binding is a root binding & allows it to be seen by all threads (and across function 
+boundaries). A per-thread 'var' binding is obtained by the 'binding' macro, so while vars are immutable, they can be rebound via binding statement. The new
+value assigned via 'binding' only lasts during the statement (not lexical scope), even thru function calls within the 
+binding call. After the binding statement's run, the root bound value holds instead.  Vars are the simplest of the Concurrency
+primitives. Their root value is available to all the threads. 
+Mutable references: (atoms/agents/refs) we often need variables that are mutable and can't get by on immutable variables only.  
+Can't share values with VARs (above).  
+ATOMs: use (swap! var (fn [old] newval)) to change state & its immed avail on all threads. 
+Your change fn should avoid Side-effects because your fn may be called more than once. Your fn has to take the old value and
+provide a new one. Clj makes sure that the old val hasn't changed between reading it & once the fn has finished with the new val. 
+This is why your fn may be called more than once. Reading a var is never blocked in Clojure. Uses compare & set (CAS) spin swap.
+Changes occur synchronously (atomically) on called thread. 
+AGENTs: Video 28: use coordinated changes but are asynchronous.  Refs use send & send-off to change state and return immmediately. 
+Similar (I think?) to ATOMs, (swap!, but not mentioned earlier in video) They accept the old value and other args (we'll use as
+ new val) From our example, one send at a time is dispatched and others are queued up against the AGENT. 
+(def my-agent (agent {:name "big-Mark" :fav []}))
+(defn slow-append
+  [val new-fav] ;note additional arg here
+  (Thread/sleep 2000)
+  (assoc val 
+         :fav 
+         (conj (:fav val) new-fav)))
+(do 
+  (send my-agent slow-append "food")
+  (send my-agent slow-append "music")
+  (println @my-agent) ;1st SEND is still proc, so get initial val
+  (Thread/sleep 2500)
+  (println @my-agent) ;get result of 1st SEND
+  (Thread/sleep 2500)
+  (println @my-agent));get result of 2nd SEND
+Video 29: because send/send-off goes off on another thread to make their change, detecting errors has to be done with
+specially. If your state changing fn throws an exception, it is captured and stored and the agent is put into an error state.
+Any interaction with the agent causes an exception until clear-agent-errors. Examine errors with agent-errors.  
+Video 30 has demo of agent-erroring.
+(def erroring-agent (agent 3))
+(defn modify-error-agent 
+  [current new]
+  (if (= 42 new)
+    (throw (Exception. "Not 42!"))
+    new))
+(send erroring-agent modify-error-agent 42)
+REFs (vid 34): handled similar to transactions in a database. Use COMMUTE (or ALTER) to change state but has to be within a (dosync)
+lexcial boundary.  
+MACROS (vid 35): A short intermission on macros & how a fn he used earlier could be converted into a macro instead. 
+With this tool, we can look at how concurrent writes work in CLJ.
+(def ^:dynamic goo "mark")
+(defn ^:dynamic print-goo ([] (print-goo ""))([prefix] (println prefix goo))) 
+(defmacro with-new-thread [& body]
+  `(.start (Thread. (fn [] ~@body))))
+(macroexpand-1 '(with-new-thread (print-goo)))
+==> (.start (java.lang.Thread. (clojure.core/fn [] (print-goo))))
+REF demo (vid 36): 
+(def r (ref 0)) ;below will illust updates at the same time
+(with-new-thread (dosync (println "tx1 initial: " @r) ; these 2 are run simultaneously!
+  (alter r inc) (println "tx1 final: " @r)(Thread/sleep 5000)
+  (println "tx1 done")))
+(with-new-thread (dosync (println "tx2 initial: " @r)(Thread/sleep 1000)
+  (alter r inc) (println "tx2 final: " @r)
+  (println "tx2 done")))
+RESULTS: Similar to ATOM's the alter is restarted until any other tx is over. 
+tx1 initial:  0
+tx1 final:  1
+tx2 initial:  0
+tx2 initial:  0
+tx2 initial:  0
+tx2 initial:  0
+tx2 initial:  0
+tx1 done
+tx2 initial:  1
+tx2 final:  2
+tx2 done
+vid37: transactions ("tx") are imp for reading as well, as demo'd in this video where we go w/o a tx.
+(def r (ref 0)) 
+(with-new-thread 
+  (dotimes [_ 10]
+    (Thread/sleep 1000)
+    (dosync (alter r inc))
+    (println "updated ref to: " @r)))
+(with-new-thread 
+  (dotimes [_ 7]
+    (println "ref is" @r)
+    (Thread/sleep 1000)))         
+
+ref is 0
+updated ref to:  1
+ref is 1
+updated ref to:  2
+ref is 2
+updated ref to:  3
+ref is 3
+updated ref to:  4
+ref is 4
+updated ref to:  5
+ref is 5
+updated ref to:  6
+ref is 6
+updated ref to:  7
+updated ref to:  8
+vid38: Using a tx for reading, demo WITH a tx while reading. He intros ref-set fn which sets the REF to that val directly.
+He uses it just to reset r to zero. This code: 1st with-new-thread is the same as previous vid.  We're after repeatable 
+reads as in database scenarios.  Demo shows that altho a dosync can be restarted (and is in the reads), the read section
+sees a picture of the world as it existed in at the start of the latest dosync.  
+(with-new-thread ; the READ routine
+  (println "ref outside is" @r)  
+  (dosync 
+    (dotimes [i 7]
+      (println (str "iter " i " r is " @r))
+      (Thread/sleep 1000)))               
+  (println "ref outside is" @r))
+updated ref to:  1
+updated ref to:  2
+updated ref to:  3
+ref outside is 3
+iter 0 r is 3
+updated ref to:  4
+iter 0 r is 4  CLJ RESTARTED the dosync here b/c due to its algo that something is wrong
+updated ref to:  5
+iter 1 r is 4
+updated ref to:  6
+iter 0 r is 6  CLJ RESTARTED again
+updated ref to:  7
+iter 1 r is 6
+updated ref to:  8
+iter 2 r is 6
+updated ref to:  9
+iter 0 r is 9  CLJ RESTARTED again
+updated ref to:  10
+iter 1 r is 9
+iter 2 r is 9
+iter 3 r is 9
+iter 4 r is 9
+iter 5 r is 9
+iter 6 r is 9
+ref outside is 10
+vid 39: shows coordinated reads. Simply, the dosync block prevents the 2 refs inside it from being out of sync with each 
+other.  
+--------------------------------------------------------------------
+(apply f args)(apply f x args)(apply f x y args)(apply f x y z args)(apply f a b c d & args)
+
+Applies fn f to the argument list formed by prepending intervening arguments to args.
+
+(def *strings* ["str1" "str2" "str3"])
+;; #'user/*strings*
+
+;; Oops!
+(str *strings*)
+;;=> "[\"str1\" \"str2\" \"str3\"]"
+
+;; Yay!
+(apply str *strings*)
+;;=> "str1str2str3"
+
+;; Note the equivalence of the following two forms
+(apply str ["str1" "str2" "str3"])  ;;=> "str1str2str3"
+(str "str1" "str2" "str3")          ;;=> "str1str2str3"
+---------------
+----notes from a new clojure-based CMS mentioned on reddit. (https://github.com/emil0r/reverie)
+Nice work, one thing I'd recommend is moving off lib-noir though. It's pretty much legacy now and its memory session isn't thread safe. 
+The history here is that lib-noir was split out from the noir framework that's now been abandoned. At the time of writing it provided a lot of utility functions for working with Ring that weren't available elsewhere.
+Over the past year or so a number of standalone libraries have appeared that are more focused and provide most of the same functionality. For example, ring-http-response (https://github.com/metosin/ring-http-response) provides a comprehensive way to handle response types, ring-middleware-format (https://github.com/metosin/ring-middleware-format) handles format coercions, ring-defaults (https://github.com/ring-clojure/ring-defaults) provides standard middleware wrappers, and so on.
+There's no equivalent to the session mechanism that lib-noir provides, so I recommend using the standard Ring session management mechanism (https://github.com/ring-clojure/ring/wiki/Sessions).
+The way lib-noir handles sessions is by using a dynamic var internally and binding the session from the request to it. The problem with this approach is that the var is thread-local, and each request can be served in a separate thread. So when two requests are updating the session at the same time the last one will overwrite the changes made by the first.
+------------------------------Differences between a seq and a list (collection)
+They seem so similar... [stackoverflow]
+(list [1 2 3]) => ([1 2 3])
+(seq [1 2 3]) => ([1 2 3])
+... but... 
+(class (list [1 2 3])) => clojure.lang.PersistentList
+(class (seq [1 2 3])) => clojure.lang.PersistentVector$ChunkedSeq
+---seqs can be lazy, whereas lists cannot.
+(class (range)) => clojure.lang.LazySeq
+ (class (apply list (range))) ;cannot be evaluated
+ ; "java.lang.OutOfMemoryError: GC overhead limit exceeded"
+---seqs can be infinite, thus uncountable, whereas lists are always countable.
+Also, lists are their own seqs (implementation details):
+(class (seq '(1 2 3))) => clojure.lang.PersistentList
+One can always create a seq using cons. Check out more information in this post for differences between cons and conj.
+http://stackoverflow.com/questions/3008411/clojure-consseq-vs-conjlist
+Also, PersistentList is a concrete datatype, whereas ISeq is an interface. (PersistentList implements ISeq, which is why all the "seq" functions work on lists). The Clojure.org page on sequences describes seqs as "allow[ing] many data structures to provide access to their elements as sequences."
+IPersistentList is the interface for the general class of "list" implementations, of which PersistentList is the obvious one (but also includes PersistentQueue).
+--------------------
+Lists are a collection data structure implemented as a linked list. (Other core collection data structures are vectors, maps, and sets.)
+Sequences are a list abstraction that can be applied to many kinds of data. Think of sequences as a logical view that lets you traverse the elements of something in order.
+Lists are a case where the concrete type matches the abstraction, so lists actually are a sequence. However, there are many sequences that are not lists, but some other implementation as a view over another data structure (like clojure.lang.PersistentVector$ChunkedSeq).
+If you look closely, functions in the core library are separated into either collection functions (which take a collection as the first argument and return a collection of the same type) and sequence functions (which take a "seqable" thing as the last argument, convert it to a sequence, perform their function, and return a sequence). Example collection functions are conj, assoc, count, get, etc. Example sequence functions are map, reduce, filter, etc. In fact, the majority of the core library works on sequences, not particular collection types.
+Sequences are the abstraction that unites all of the Clojure data structures with all of the FP functions in the core library. This unification is what underlies much of the conciseness and reusability of Clojure code
+-------------------- Use of split-with & how partial can act as a predicate:
+user=> (split-with (partial >= 3) [1 2 3 4 5])
+[(1 2 3) (4 5)]
+-------------------- 
+(defn hash-ordered [collection]
+  (-> (reduce (fn [acc e] (unchecked-add-int
+                            (unchecked-multiply-int 31 acc)
+                            (hash e)))
+              1
+              collection)
+      (mix-collection-hash (count collection))))
+	  
+-------------------- 
+What significance is there for functions (like doseq) that list 'Does not retain the head of the sequence'?
+---- gen-class:
+https://kotka.de/blog/2010/02/gen-class_how_it_works_and_how_to_use_it.html
+-------------------- http://stackoverflow.com/questions/1641626/how-to-convert-lazy-sequence-to-non-lazy-in-clojure
+converting from lazy to non-lazy depends upon type of non lazy sequence:
+	an ex-lazy (fully evaluated) lazy sequence  (doall ... ) 
+	a list for sequential access  (apply list (my-lazy-seq)) OR (into () ...) 
+	a vector for later random access (vec (my-lazy-seq)) 
+	a map or a set if you have some special purpose. 
+
+ I was trying to map a function over a vector and then spit the results to a file, and even after calling doall, the file contained "clojure.lang.LazySeq@address" instead of the contents of the sequence. Calling vec on value map returned got me what I needed to spit out to the file.
+--------------------
+My Qs: can LOOP work w/o RECUR?; RECUR goes back to nearest loop-head (which can be DEFN) & with new bindings but does it simply go to form where nearest bindings are?
+------- data structures (see ClojureWest 2016 vids on YouTube for Specter from Marz)
+(into {} [[:a 1] [:b 2] [:c 3]])
+{:a 1 :b 2 :c 3}
+
+contains? checks for the key value except in the case of sets where it searches values themselves
+
+------- assoc-in
+(def users [{:name "James" :age 26}  {:name "John" :age 43}])
+
+;; update the age of the second (index 1) user 
+(assoc-in users [1 :age] 44)
+;;=> [{:name "James", :age 26} {:name "John", :age 44}]
+
+;; insert the password of the second (index 1) user
+(assoc-in users [1 :password] "nhoJ")
+;;=> [{:name "James", :age 26} {:password "nhoJ", :name "John", :age 43}]
+------- APPLY & the diff between reduce & apply: (http://stackoverflow.com/questions/3153396/clojure-reduce-vs-apply)
+;; Note the equivalence of the following two forms
+(apply str ["str1" "str2" "str3"])  ;;=> "str1str2str3" (APPLY is converting the vec to a list, apparently)
+(str "str1" "str2" "str3")          ;;=> "str1str2str3"
+
+(reduce + (list 1 2 3 4 5))
+; translates to: (+ (+ (+ (+ 1 2) 3) 4) 5)
+
+(apply + (list 1 2 3 4 5))
+; translates to: (+ 1 2 3 4 5)
+------- java arrays in clojure
+Needed aset-int instead of aset to set the values inside a multi-dim (make-array Integer/TYPE). Will get illegal type mismatch otherwise. http://stackoverflow.com/questions/11568957/aset-and-aget-not-working-properly-and-calling-functions-from-other-functions
+------- 
+Why does a map not return vectors & lists instead? Returns lazyseq instead (Brave & True book says that in Chap 6 they will explain)
+--------------- from the (into ) docs page
+;; How do we use a transducer?
+
+; Define the transducer with `comp` but in `->` order:
+(def xform (comp (map #(+ 2 %))
+                 (filter odd?)))
+; adds 2, then omits if result is even.
+
+(into [-1 -2] xform (range 10))
+; => [-1 -2 3 5 7 9 11]
+
+
+; Alternatively, using `transduce` directly:
+(transduce xform conj [-1 -2] (range 10))
+; => [-1 -2 3 5 7 9 11]
+
+; Alternatively, using reduce and explicitly calling `map` and `filter`:
+(reduce conj [-1 -2] (->> (range 10)
+                          (map #(+ 2 %))
+                          (filter odd?)))
+; => [-1 -2 3 5 7 9 11]
+
+
+;; Let's benchmark, using Criterium (https://github.com/hugoduncan/criterium)
+(require '[criterium.core :refer [quick-bench]])
+(quick-bench (into [-1 -2] xform (range 1000000)))
+;   Execution time lower quantile : 54.368948 ms ( 2.5%)
+;   Execution time upper quantile : 55.976303 ms (97.5%)
+
+(quick-bench (transduce xform conj [-1 -2] (range 1000000)))
+;   Execution time lower quantile : 77.738505 ms ( 2.5%)
+;   Execution time upper quantile : 87.088016 ms (97.5%): 1.5x slower than into
+
+(quick-bench (reduce conj [-1 -2] (->> (range 1000000) 
+                                       (map #(+ 2 %))
+                                       (filter odd?))))
+;   Execution time lower quantile : 92.607522 ms ( 2.5%)
+;   Execution time upper quantile : 100.426780 ms (97.5%): 1.8x slower than into
+--------------- 
+Difference in named functions & how they are called:
+user=> (def t0 (System/currentTimeMillis))
+user=> (defn t1 [] (System/currentTimeMillis))
+user=> (t1)
+1318408717941
+user=> t0
+1318408644243
+user=> t0
+1318408644243
+user=> (t1)
+1318408719361
+NOTE:
+(def t2 (fn [] (System/currentTimeMillis))) will make t2 behave like t1
+--------------- Destructuring rest sequences as map key/value pairs. 
+(Clojure Programming 2012) We’ve already seen how
+extra-positional values in sequential destructuring forms can be gathered into a “rest”
+seq, and map and sequential destructuring can be composed as needed to drill into any
+given data structure. Here’s a simple case of a vector that contains some positional
+values, followed by a set of key/value pairs:
+(def user-info ["robert8990" 2011 :name "Bob" :city "Boston"])
+;= #'user/user-info
+Data like this isn’t uncommon, and handling it is rarely elegant. The “manual” approach
+in Clojure is tolerable as these things go:
+(let [[username account-year & extra-info] user-info 	(1)
+{:keys [name city]} (apply hash-map extra-info)]		(2)
+(format "%s is in %s" name city))
+;= "Bob is in Boston"
+1) We can destructure the original vector into its positional elements, gathering the
+remainder into a rest seq.
+2) That rest seq, consisting of alternating keys and values, can be used as the basis for
+creating a new hashmap, which we can then destructure as we wish.
+--------------
+alter-var-root
+
+constantly
+------------------------------------------ Calculating # of days alive from today (June 16 2016)
+(def dayz
+    (let 
+       [diff (- (.getTime (java.util.Date. )) ; or 116 05 16 for June 16 2016
+                (.getTime (java.util.Date. 66 03 20)))]
+    (float (/ diff (* 1000 60 60 24)))
+    ))
+(defn hello-world [uuu]
+    (println (str "No. of days diff: " uuu)))
+(hello-world dayz)
+--------------- Another try w/ the Fn returning a vec instead
+(def dayz
+    (let 
+       [diff (- (.getTime (java.util.Date. )) ; or 116 05 16 for June 16 2016
+                (.getTime (java.util.Date. 66 03 20)))]
+    [(float (/ diff (* 1000 60 60 24))) diff]
+    ))
+
+
+(defn hello-world [[jj kk] ]
+    (println (format "No. of days diff: %.8f and %d" jj kk)))
+
+(hello-world dayz)
+--------------- doall 		(vs dorun)
+;;map a function which makes database calls to either retrieve or 
+;;create and retrieves records from the database over a vector of values. 
+;;The function returns a map of fields and values
+user=> (map #(db/make-n-get-or-get :person {:name %}) ["Fred" "Ethel" "Lucy" "Ricardo"])
+JdbcSQLException The object is already closed [90007-170]  org.h2.message.DbE
+xception.getJdbcSQLException (DbException.java:329)
+
+;;database connection was closed before we got a chance to do our transactions
+;;lets wrap it in doall
+user=> (doall (map #(db/make-n-get-or-get :person {:name %}) 
+["Fred" "Ethel" "Lucy" "Ricardo"]))
+DEBUG :db insert into person values name = 'Fred'
+DEBUG :db insert into person values name = 'Ethel'
+DEBUG :db insert into person values name = 'Lucy'
+DEBUG :db insert into person values name = 'Ricardo'
+({:name "Fred"} {:name "Ethel"} {:name "Lucy"} {:name "Ricardo"})
+
+;;notice that unlike using dorun, this returns a list of maps
+-------------
+p.165 in Clojure Prog 2E about Futures & Promises:
+	(defn call-service
+		[arg1 arg2 callback-fn]
+		; ...perform service call, eventually invoking callback-fn with results...
+		(future (callback-fn (+ arg1 arg2) (- arg1 arg2))))
+wrapped in:
+(defn sync-fn
+	[async-fn]
+	(fn [& args]
+		(let [result (promise)]
+			(apply async-fn (conj (vec args) #(deliver result %&)))
+	@result)))
+
+((sync-fn call-service) 8 7)
+;= (15 1)
+	
+----------------------------------------- SCALA notes 
+import java.time._   /* Java 8 req'd here new date methods */
+class Employee (val firstName:String, val lastName:String,
+val title:String, val hireDate:LocalDate) 
+object Employee {	/* COMPANION OBJECT; use here is for factory (also, has access to private members) */
+    def create(firstName:String, lastName:String, title:String) = 
+    new Employee(firstName, lastName, title, LocalDate.now)
+}    
+
+object EmpRunner extends App{	/* Has to be separate from the comp object since it can't extend App */
+    val emp = Employee.create("Ken", "Thompson", "Progger")
+    println(emp.hireDate)
+}

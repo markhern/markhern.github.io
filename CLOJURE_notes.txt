@@ -1,3 +1,8 @@
+rtmp://s11.us-east-1.skyvdn.com:1935/rtplive/RichmondCS095NB0734
+rtmp://s13.us-east-1.skyvdn.com:1935/rtplive/RichmondCS095NB0790
+rtmp://s11.us-east-1.skyvdn.com:1935/rtplive/RichmondCS95SB801
+rtmp://s13.us-east-1.skyvdn.com:1935/rtplive/RichmondCS095NB0760
+
 CLOJURE snippets & notes..................
 ---------- why does the 1st snippet return string: "scoderujolcolleh"
 (def concat-and-reverse (comp (partial apply str) reverse str)) 

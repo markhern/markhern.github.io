@@ -1,3 +1,9 @@
+rtmp://s13.us-east-1.skyvdn.com:1935/rtplive/RichmondCS064EB1950
+rtmp://s12.us-east-1.skyvdn.com:1935/rtplive/RichmondCS095SB718
+rtmp://s13.us-east-1.skyvdn.com:1935/rtplive/RichmondCS095SB0780
+rtmp://s13.us-east-1.skyvdn.com:1935/rtplive/RichmondCS095SB0769
+rtmp://s13.us-east-1.skyvdn.com:1935/rtplive/RichmondCS095SB0788
+rtmp://s13.us-east-1.skyvdn.com:1935/rtplive/RichmondCS064WB1900
 rtmp://s11.us-east-1.skyvdn.com:1935/rtplive/RichmondCS095NB0734
 rtmp://s13.us-east-1.skyvdn.com:1935/rtplive/RichmondCS095NB0790
 rtmp://s11.us-east-1.skyvdn.com:1935/rtplive/RichmondCS95SB801

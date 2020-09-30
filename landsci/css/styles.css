@@ -6107,6 +6107,7 @@ a.close.disabled {
   height: 450px;
   z-index: -1;
   opacity: 0.6;
+  margin-top: 2rem;
 }
 
 a.bg-primary:hover, a.bg-primary:focus,
